@@ -5,6 +5,10 @@ struct InboundPorts {
     var socks: Int = 10808
     var http: Int = 10809
     let listen: String = "127.0.0.1"
+    /// Whether an HTTP inbound is opened next to the SOCKS one. Only the system
+    /// proxy needs it; a bridge is reached over SOCKS alone, and every inbound
+    /// nobody uses is a listening port for nothing.
+    var serveHTTP = true
 }
 
 /// How traffic reaches the core.
@@ -121,7 +125,7 @@ enum XrayConfigBuilder {
     }
 
     private static func proxyInbounds(_ p: InboundPorts) -> [[String: Any]] {
-        [
+        let all: [[String: Any]] = [
             [
                 "tag": "socks-in",
                 "listen": p.listen,
@@ -138,6 +142,7 @@ enum XrayConfigBuilder {
                 "sniffing": ["enabled": true, "destOverride": ["http", "tls"]]
             ]
         ]
+        return p.serveHTTP ? all : [all[0]]
     }
 
     /// Xray's own layer-3 inbound. It ignores `listen`/`port` and instead reads

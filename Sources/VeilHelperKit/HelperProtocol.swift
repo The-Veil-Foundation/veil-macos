@@ -8,7 +8,7 @@ public enum VeilHelperInfo {
 
     /// Bumped whenever the protocol changes. The app refuses to talk to a
     /// helper that does not match and asks the user to reinstall it.
-    public static let protocolVersion = 6
+    public static let protocolVersion = 7
 
     /// Root-owned directory holding the helper, `tun2socks`, the pinned client
     /// requirement and the tunnel state. Nothing here is writable by the user,

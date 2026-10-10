@@ -61,19 +61,17 @@ final class BridgeManager {
             return [:]
         }
 
-        var taken = Set(assigned.values.flatMap { [$0, $0 + 1] })
+        var taken = Set(assigned.values)
         for (id, server) in wanted where processes[id] == nil {
-            // Two ports: the builder always emits a SOCKS and an HTTP inbound,
-            // and only the SOCKS one is used.
-            let ports = PortAllocator.free(count: 2, from: basePort, avoiding: taken)
-            guard ports.count == 2 else {
+            // One port: the profile reaches a bridge over SOCKS only.
+            let ports = PortAllocator.free(count: 1, from: basePort, avoiding: taken)
+            guard let port = ports.first else {
                 onLog?("[error] no free port for \(server.name)\n")
                 continue
             }
-            taken.formUnion(ports)
-            if start(server, binary: binary, socks: ports[0], http: ports[1],
-                     logLevel: logLevel) {
-                assigned[id] = ports[0]
+            taken.insert(port)
+            if start(server, binary: binary, socks: port, logLevel: logLevel) {
+                assigned[id] = port
                 names[id] = server.name
             }
         }
@@ -89,10 +87,10 @@ final class BridgeManager {
     // MARK: - Internals
 
     private func start(_ server: ProxyConfig, binary: URL,
-                       socks: Int, http: Int, logLevel: String) -> Bool {
+                       socks: Int, logLevel: String) -> Bool {
         var ports = InboundPorts()
         ports.socks = socks
-        ports.http = http
+        ports.serveHTTP = false
 
         let process = XrayProcess()
         let name = server.name
@@ -119,7 +117,10 @@ final class BridgeManager {
     }
 
     private func stop(_ id: UUID) {
-        processes[id]?.stop()
+        // No waiting: a replacement bridge is given a port nothing holds, so
+        // nothing needs this one gone first — and waiting up to half a second
+        // per bridge, on the main thread, is what made disconnecting stall.
+        processes[id]?.stop(wait: false)
         processes.removeValue(forKey: id)
         assigned.removeValue(forKey: id)
         names.removeValue(forKey: id)

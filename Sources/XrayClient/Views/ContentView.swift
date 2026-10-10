@@ -86,7 +86,9 @@ struct ContentView: View {
     var body: some View {
         @Bindable var store = store
         return VStack(spacing: 0) {
-            header
+            // Its own view, so a change of connection state redraws the header
+            // and not the server list beneath it.
+            ConnectionHeader()
             Divider()
             staleHelperBanner
             modeSwitcher
@@ -98,10 +100,10 @@ struct ContentView: View {
                 serverList
             }
             if showLog {
-                LogPane(text: connection.logs,
-                        height: $store.settings.logPaneHeight,
-                        onClear: { connection.clearLogs() },
-                        onHeightCommit: { store.save() })
+                // Reads the log itself: read here, every line the core printed
+                // would re-run this whole body — filters, chips and list.
+                ConnectionLogPane(height: $store.settings.logPaneHeight,
+                                  onHeightCommit: { store.save() })
                     .frame(height: store.settings.logPaneHeight)
             }
             Divider()
@@ -322,67 +324,6 @@ struct ContentView: View {
         pinger.test(store.allServers, tunActive: tunActive)
     }
 
-    // MARK: - Header (status + connect)
-
-    private var header: some View {
-        let selected = store.server(withID: store.selectedServerID)
-        return HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(statusColor.opacity(0.18)).frame(width: 44, height: 44)
-                Image(systemName: connection.isConnected ? "shield.lefthalf.filled" : "shield.slash")
-                    .font(.system(size: 20))
-                    .foregroundStyle(statusColor)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statusLabel)
-                    .font(.headline)
-                    .foregroundStyle(statusColor)
-                if connection.isConnected {
-                    Text(verbatim: "\(connection.activeServerName) · \(connection.uptimeText)")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                } else if let selected {
-                    Text(selected.name).font(.subheadline).foregroundStyle(.secondary)
-                } else {
-                    Text(loc("Select a server")).font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            modePicker
-            connectButton(selected: selected)
-        }
-        .padding(14)
-    }
-
-    private var modePicker: some View {
-        @Bindable var conn = connection
-        return ModeGlassSwitch(
-            mode: $conn.mode,
-            isDisabled: connection.isConnected
-        ) { newMode in
-            store.settings.mode = newMode
-            store.save()
-        }
-        .help(connection.mode.subtitle)
-    }
-
-    @ViewBuilder
-    private func connectButton(selected: ProxyConfig?) -> some View {
-        if connection.isConnected || connection.state == .connecting {
-            Button(role: .destructive) { connection.disconnect() } label: {
-                Label(loc("Disconnect"), systemImage: "stop.fill").frame(minWidth: 96)
-            }
-            .controlSize(.large).glassProminentButton().tint(.red)
-        } else {
-            Button {
-                if let s = selected { connection.connect(to: s) }
-            } label: {
-                Label(loc("Connect"), systemImage: "bolt.fill").frame(minWidth: 96)
-            }
-            .controlSize(.large).glassProminentButton()
-            .disabled(selected == nil)
-        }
-    }
-
     // MARK: - Server list (collapsible groups)
 
     private var serverList: some View {
@@ -532,6 +473,82 @@ struct ContentView: View {
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(Color.primary.opacity(0.04))
     }
+}
+
+// MARK: - Header (status + connect)
+
+/// Status, mode switch and the connect button.
+private struct ConnectionHeader: View {
+    @Environment(ServerStore.self) private var store
+    @Environment(ConnectionManager.self) private var connection
+    @Environment(Loc.self) private var loc
+
+    var body: some View {
+        let selected = store.server(withID: store.selectedServerID)
+        return HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(statusColor.opacity(0.18)).frame(width: 44, height: 44)
+                Image(systemName: connection.isConnected ? "shield.lefthalf.filled" : "shield.slash")
+                    .font(.system(size: 20))
+                    .foregroundStyle(statusColor)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(statusLabel)
+                    .font(.headline)
+                    .foregroundStyle(statusColor)
+                if connection.isConnected {
+                    HStack(spacing: 0) {
+                        Text(verbatim: "\(connection.activeServerName) · ")
+                        // Drawn by the system from the start date: no app
+                        // timer, no redraw of anything else once a second.
+                        if let since = connection.connectedSince {
+                            Text(since, style: .timer).monospacedDigit()
+                        }
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                } else if let selected {
+                    Text(selected.name).font(.subheadline).foregroundStyle(.secondary)
+                } else {
+                    Text(loc("Select a server")).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            modePicker
+            connectButton(selected: selected)
+        }
+        .padding(14)
+    }
+
+    private var modePicker: some View {
+        @Bindable var conn = connection
+        return ModeGlassSwitch(
+            mode: $conn.mode,
+            isDisabled: connection.isConnected
+        ) { newMode in
+            store.settings.mode = newMode
+            store.save()
+        }
+        .help(connection.mode.subtitle)
+    }
+
+    @ViewBuilder
+    private func connectButton(selected: ProxyConfig?) -> some View {
+        if connection.isConnected || connection.state == .connecting {
+            Button(role: .destructive) { connection.disconnect() } label: {
+                Label(loc("Disconnect"), systemImage: "stop.fill").frame(minWidth: 96)
+            }
+            .controlSize(.large).glassProminentButton().tint(.red)
+        } else {
+            Button {
+                if let s = selected { connection.connect(to: s) }
+            } label: {
+                Label(loc("Connect"), systemImage: "bolt.fill").frame(minWidth: 96)
+            }
+            .controlSize(.large).glassProminentButton()
+            .disabled(selected == nil)
+        }
+    }
 
     /// The connection state, translated. `failed` carries the core's own
     /// message, which is not ours to translate, so only the label around it is.
@@ -551,6 +568,26 @@ struct ContentView: View {
         case .failed:     return .red
         case .disconnected: return .secondary
         }
+    }
+}
+
+/// The log pane, fed from the connection.
+///
+/// Also tells the connection when it is on screen: in TUN mode the core's log
+/// lives with the root helper and is fetched over XPC, which is only worth
+/// doing while someone is reading it.
+private struct ConnectionLogPane: View {
+    @Environment(ConnectionManager.self) private var connection
+    @Binding var height: Double
+    var onHeightCommit: (() -> Void)? = nil
+
+    var body: some View {
+        LogPane(text: connection.logs,
+                height: $height,
+                onClear: { connection.clearLogs() },
+                onHeightCommit: onHeightCommit)
+            .onAppear { connection.setLogVisible(true) }
+            .onDisappear { connection.setLogVisible(false) }
     }
 }
 
@@ -667,8 +704,11 @@ struct LogPane: View {
         !query.trimmingCharacters(in: .whitespaces).isEmpty || minimum != .none
     }
 
+    /// Lines in `text`, counted without splitting it into a copy of itself.
     private func count(_ text: String) -> Int {
-        text.isEmpty ? 0 : text.split(separator: "\n", omittingEmptySubsequences: false).count
+        guard !text.isEmpty else { return 0 }
+        let newlines = text.utf8.reduce(0) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 }
+        return text.utf8.last == UInt8(ascii: "\n") ? newlines : newlines + 1
     }
 
     var body: some View {
@@ -730,24 +770,14 @@ struct LogPane: View {
 
             Divider().opacity(0.5)
 
-            // Scrollable monospaced body.
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(body.isEmpty
-                         ? (isFiltering ? loc("Nothing matches this filter.")
-                                        : loc("No logs yet."))
-                         : body)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(body.isEmpty ? Color.secondary : .primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(10)
-                        .id("bottom")
-                }
-                .onChange(of: text) { _, _ in
-                    withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                }
-            }
+            // Scrollable monospaced body. An AppKit text view rather than a
+            // SwiftUI `Text`: the log is thousands of lines, and `Text` laid
+            // all of them out again — and animated a scroll — on every flush.
+            LogTextView(text: body.isEmpty
+                        ? (isFiltering ? loc("Nothing matches this filter.")
+                                       : loc("No logs yet."))
+                        : body,
+                        isPlaceholder: body.isEmpty)
         }
         .logPaneBackground()
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -783,6 +813,66 @@ struct LogPane: View {
                 if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
             }
             .help(loc("Drag to resize"))
+    }
+}
+
+/// Read-only, selectable, monospaced log text.
+///
+/// New output that extends what is already shown is appended rather than
+/// replacing the whole text, which keeps a selection alive while the core is
+/// still printing. It follows the end only when the reader was already there,
+/// so scrolling back to read an error is not undone by the next line.
+private struct LogTextView: NSViewRepresentable {
+    let text: String
+    var isPlaceholder = false
+
+    final class Coordinator {
+        var shown = ""
+        var placeholder = false
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = false
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        if let textView = scroll.documentView as? NSTextView {
+            textView.isEditable = false
+            textView.isSelectable = true
+            textView.isRichText = false
+            textView.drawsBackground = false
+            textView.textContainerInset = NSSize(width: 6, height: 8)
+            textView.isAutomaticLinkDetectionEnabled = false
+            textView.layoutManager?.allowsNonContiguousLayout = true
+        }
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let textView = scroll.documentView as? NSTextView,
+              let storage = textView.textStorage else { return }
+        let state = context.coordinator
+        guard state.shown != text || state.placeholder != isPlaceholder else { return }
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
+            .foregroundColor: isPlaceholder ? NSColor.secondaryLabelColor : NSColor.labelColor
+        ]
+        let visible = scroll.contentView.bounds
+        let wasAtBottom = visible.maxY >= textView.frame.height - 24
+
+        if !isPlaceholder, !state.placeholder, !state.shown.isEmpty,
+           text.utf8.starts(with: state.shown.utf8) {
+            let added = String(decoding: text.utf8.dropFirst(state.shown.utf8.count), as: UTF8.self)
+            storage.append(NSAttributedString(string: added, attributes: attributes))
+        } else {
+            storage.setAttributedString(NSAttributedString(string: text, attributes: attributes))
+        }
+        state.shown = text
+        state.placeholder = isPlaceholder
+        if wasAtBottom { textView.scrollToEndOfDocument(nil) }
     }
 }
 

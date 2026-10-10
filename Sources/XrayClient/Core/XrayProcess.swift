@@ -85,6 +85,11 @@ enum XrayBinary {
 /// Manages the lifecycle of the `xray` core subprocess and streams its logs.
 final class XrayProcess {
     private var process: Process?
+    /// The config the running process was started from. It holds the node's
+    /// credentials, so it goes when the process does — `stop()` clears the
+    /// termination handler, and that handler used to be the only thing that
+    /// removed it, so every server switch left one behind in the temp folder.
+    private var configURL: URL?
     private let queue = DispatchQueue(label: "xray.process")
 
     /// Called on the main queue with each new log line.
@@ -102,7 +107,11 @@ final class XrayProcess {
 
         let tmpDir = FileManager.default.temporaryDirectory
         let configURL = tmpDir.appendingPathComponent("xray-config-\(UUID().uuidString).json")
-        try configData.write(to: configURL)
+        // Owner-only: it carries the node's UUID or password.
+        guard FileManager.default.createFile(atPath: configURL.path, contents: configData,
+                                             attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
 
         let proc = Process()
         proc.executableURL = binary
@@ -120,7 +129,10 @@ final class XrayProcess {
         let logCallback = onLog
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            // Decoded leniently: a read can end inside a multi-byte character,
+            // and the strict initialiser threw the whole chunk away for it.
+            guard !data.isEmpty else { return }
+            let text = String(decoding: data, as: UTF8.self)
             DispatchQueue.main.async { logCallback?(text) }
         }
 
@@ -132,11 +144,23 @@ final class XrayProcess {
             DispatchQueue.main.async { exitCallback?(status) }
         }
 
-        try proc.run()
+        do {
+            try proc.run()
+        } catch {
+            try? FileManager.default.removeItem(at: configURL)
+            throw error
+        }
         self.process = proc
+        self.configURL = configURL
     }
 
-    func stop() {
+    /// Stops the process. `wait` holds the caller until it is gone, which only
+    /// matters when the next core is about to bind the same port.
+    func stop(wait: Bool = true) {
+        if let configURL {
+            try? FileManager.default.removeItem(at: configURL)
+            self.configURL = nil
+        }
         guard let proc = process, proc.isRunning else {
             process = nil
             return
@@ -144,6 +168,7 @@ final class XrayProcess {
         proc.terminationHandler = nil
         proc.terminate()
         process = nil
+        guard wait else { return }
         // Wait briefly for the process to actually go away. A core that is
         // still alive still holds the SOCKS port, and the replacement started
         // right after would fail to bind — which is what made switching
