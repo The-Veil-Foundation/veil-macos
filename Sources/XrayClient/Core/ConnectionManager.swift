@@ -34,8 +34,11 @@ final class ConnectionManager {
     private(set) var activeServerID: UUID?
     private(set) var activeServerName: String = ""
     private(set) var logs: String = ""
+    /// When the current connection came up. Views render the running clock
+    /// from this with `Text(_:style: .timer)`, which the system redraws on its
+    /// own — a one-second app timer republished the whole main window every
+    /// tick, list and all, for as long as the tunnel was up.
     private(set) var connectedSince: Date?
-    private(set) var uptimeText: String = ""
 
     var mode: TunnelMode = .systemProxy
     var ports = InboundPorts()
@@ -80,7 +83,11 @@ final class ConnectionManager {
     /// never persisted, and nothing outside this process needs it to survive a
     /// restart.
     private let controlSecret = UUID().uuidString
-    private var uptimeTimer: Timer?
+    /// Held while a connection is up so App Nap leaves the app — and the cores
+    /// it runs as children — alone once the window is closed to the menu bar.
+    /// A napped app's timers and pipes are throttled, and with them the
+    /// watchdog, the recovery after wake and the system-proxy core's output.
+    private var activity: NSObjectProtocol?
 
     /// Network path monitoring and recovery after sleep / network changes.
     private var networkMonitor: NWPathMonitor?
@@ -98,8 +105,13 @@ final class ConnectionManager {
     private var pendingLog = ""
     private var logFlushTask: Task<Void, Never>?
 
-    /// Pulls the root-owned core log into the app's log while TUN mode is up.
+    /// Pulls the root-owned core log into the app's log while TUN mode is up
+    /// and someone is looking at it.
     private var coreLogTask: Task<Void, Never>?
+    /// How many log panes are on screen. The helper's log is only fetched
+    /// while this is non-zero: every fetch is an XPC round trip into a root
+    /// process, and nobody reads a log with the window closed.
+    private var logViewers = 0
     /// Last line already shown, so a repeated tail is not printed twice.
     private var coreLogSeen = ""
 
@@ -126,6 +138,7 @@ final class ConnectionManager {
                     self.teardownTransport()
                     self.state = .failed("xray exited (code \(code))")
                     self.stopUptime()
+                    self.holdActivity(false)
                 }
             }
         }
@@ -243,6 +256,9 @@ final class ConnectionManager {
                     || rule.ips.contains { $0.hasPrefix("geoip:") }
             }
             let assetDir = needsGeo ? GeoAssetManager.shared.directory : nil
+            // A teardown still in the queue may be a core that holds the
+            // SOCKS port this one is about to bind.
+            ConnectionManager.waitForTransport()
             try xray.start(configData: data, binary: binary, assetDir: assetDir)
         } catch {
             fail(error.localizedDescription)
@@ -358,21 +374,26 @@ final class ConnectionManager {
     /// TUN mode: hand the profile to the privileged helper.
     private func startProfileInHelper(_ data: Data, serverID: UUID, reusing: Bool) {
         Task.detached(priority: .userInitiated) {
-            do {
-                if reusing {
-                    try TunManager.reloadNativeCore(config: data)
-                } else {
-                    try TunManager.startNativeCore(config: data)
+            let result = await ConnectionManager.onTransport {
+                Result {
+                    if reusing {
+                        try TunManager.reloadNativeCore(config: data)
+                    } else {
+                        try TunManager.startNativeCore(config: data)
+                    }
                 }
+            }
+            switch result {
+            case .success:
                 await MainActor.run {
                     guard self.state == .connecting else { return }
                     self.activeUsedProfile = true
                     self.finishConnect(serverID: serverID, mode: .tun)
                     self.appendLog("[info] tunnel up (sing-box owns the interface)\n")
-                    self.startCoreLogPump()
+                    self.updateCoreLogPump()
                 }
-            } catch {
-                let tail = TunManager.nativeCoreStatus.log
+            case .failure(let error):
+                let tail = await ConnectionManager.onTransport { TunManager.nativeCoreStatus.log }
                 await MainActor.run {
                     self.bridges.stopAll()
                     if let tail, !tail.isEmpty { self.appendLog("[core] \(tail)\n") }
@@ -393,6 +414,10 @@ final class ConnectionManager {
         // the one to watch.
         stopCoreLogPump()
         xray.stop()
+        // A teardown still in the queue may be the helper's core, which holds
+        // the SOCKS port this one is about to bind. Returns at once when the
+        // queue is empty, which is every switch that keeps the transport.
+        ConnectionManager.waitForTransport()
         do {
             try xray.start(configData: data, binary: binary)
         } catch {
@@ -423,7 +448,9 @@ final class ConnectionManager {
                 let socks = self.ports.socks
                 let http = self.ports.http
                 Task.detached(priority: .userInitiated) {
-                    let ok = SystemProxy.enable(socksPort: socks, httpPort: http)
+                    let ok = await ConnectionManager.onTransport {
+                        SystemProxy.enable(socksPort: socks, httpPort: http)
+                    }
                     await MainActor.run {
                         guard self.state == .connecting else { return }
                         if ok {
@@ -468,7 +495,9 @@ final class ConnectionManager {
             let socks = ports.socks
             let http = ports.http
             Task.detached(priority: .userInitiated) {
-                let ok = SystemProxy.enable(socksPort: socks, httpPort: http)
+                let ok = await ConnectionManager.onTransport {
+                    SystemProxy.enable(socksPort: socks, httpPort: http)
+                }
                 await MainActor.run {
                     guard self.state == .connecting else { return }
                     if ok {
@@ -486,14 +515,15 @@ final class ConnectionManager {
             // For a balancer group we pin every node so the tunnel never loops.
             Task.detached(priority: .userInitiated) {
                 let ips = Set(serverHosts.flatMap { TunManager.resolveIPs(host: $0) })
-                do {
-                    try TunManager.up(socksAddr: socksAddr, serverIPs: Array(ips))
-                    await MainActor.run {
+                let result = await ConnectionManager.onTransport {
+                    Result { try TunManager.up(socksAddr: socksAddr, serverIPs: Array(ips)) }
+                }
+                await MainActor.run {
+                    switch result {
+                    case .success:
                         self.finishConnect(serverID: serverID, mode: mode)
-                        self.appendLog("[info] TUN \(keepTransport ? "re-pinned" : "up") (\(ips.joined(separator: ", ")))")
-                    }
-                } catch {
-                    await MainActor.run {
+                        self.appendLog("[info] TUN \(keepTransport ? "re-pinned" : "up") (\(ips.joined(separator: ", ")))\n")
+                    case .failure(let error):
                         self.xray.stop()
                         self.fail(error.localizedDescription)
                     }
@@ -513,7 +543,8 @@ final class ConnectionManager {
         activeMode = mode
         state = .connected
         isReconnecting = false
-        if connectedSince == nil { startUptime() }
+        if connectedSince == nil { connectedSince = Date() }
+        holdActivity(true)
         startWatchdog()
         if notifyOnConnect {
             NotificationManager.notify(
@@ -538,25 +569,71 @@ final class ConnectionManager {
         state = .disconnected
         stopUptime()
         appendLog("[info] disconnected\n")
+        holdActivity(false)
         if notifyOnConnect && wasConnected {
             NotificationManager.notify(title: "Disconnected", body: name)
         }
     }
 
     private func teardownTransport() {
-        switch activeMode {
-        case .systemProxy:
-            SystemProxy.disable()
-        case .tun:
-            // The two TUN transports own the interface in different ways, so
-            // undoing the wrong one would leave the machine without a route.
-            if activeUsedProfile {
-                TunManager.stopNativeCore()
-            } else {
-                TunManager.down()
+        let mode = activeMode
+        let usedProfile = activeUsedProfile
+        // Queued rather than run here: six `networksetup` processes or an XPC
+        // call into the helper froze the window for as long as they took. The
+        // queue is serial, so a connect started right after still runs its
+        // "on" after this "off".
+        ConnectionManager.transportQueue.async {
+            switch mode {
+            case .systemProxy:
+                SystemProxy.disable()
+            case .tun:
+                // The two TUN transports own the interface in different ways,
+                // so undoing the wrong one would leave the machine without a
+                // route.
+                if usedProfile {
+                    TunManager.stopNativeCore()
+                } else {
+                    TunManager.down()
+                }
             }
         }
         bridges.stopAll()
+    }
+
+    // MARK: - Transport queue
+
+    /// Every change to the system proxy or to the helper's tunnel runs here,
+    /// one at a time and in the order it was asked for. They are subprocesses
+    /// and XPC calls that can take seconds; run from unordered detached tasks,
+    /// a quick disconnect-then-connect could land the "off" after the "on".
+    nonisolated static let transportQueue = DispatchQueue(label: "dev.local.veil.transport",
+                                                          qos: .userInitiated)
+
+    nonisolated static func onTransport<T: Sendable>(
+        _ work: @escaping @Sendable () -> T
+    ) async -> T {
+        await withCheckedContinuation { continuation in
+            transportQueue.async { continuation.resume(returning: work()) }
+        }
+    }
+
+    /// Blocks until every queued transport change has run. Quitting calls this,
+    /// so the proxy settings and routes are restored before the process exits.
+    nonisolated static func waitForTransport() {
+        transportQueue.sync {}
+    }
+
+    // MARK: - App Nap
+
+    private func holdActivity(_ hold: Bool) {
+        if hold, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep],
+                reason: "Veil is carrying a VPN connection")
+        } else if !hold, let current = activity {
+            ProcessInfo.processInfo.endActivity(current)
+            activity = nil
+        }
     }
 
     private func fail(_ message: String) {
@@ -565,6 +642,7 @@ final class ConnectionManager {
         state = .failed(message)
         appendLog("[error] \(message)\n")
         stopUptime()
+        holdActivity(false)
     }
 
     // MARK: - Watchdog / auto-reconnect
@@ -593,7 +671,13 @@ final class ConnectionManager {
             let maxFailures = 2
             var failures = 0
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
+                // Each probe is a real connection through the tunnel, and on a
+                // laptop every one of them wakes the radio. A healthy link is
+                // checked once a minute, with slack so the system can batch the
+                // wake-up with others; after a miss the confirmation comes
+                // quickly, so a dead link is still noticed within ~70s.
+                let interval: Duration = failures == 0 ? .seconds(60) : .seconds(10)
+                try? await Task.sleep(for: interval, tolerance: .seconds(failures == 0 ? 15 : 2))
                 if Task.isCancelled { return }
                 guard let self else { return }
                 // Only probe while we believe we're connected and idle.
@@ -634,6 +718,27 @@ final class ConnectionManager {
     /// misbehaved left no trace at all, and "it just does not work" was the
     /// whole of the available evidence. The helper hands out the tail over XPC;
     /// this polls it and prints what is new.
+    /// Starts or stops the pump to match whether it is wanted: TUN mode with
+    /// the helper's core, and a log pane on screen.
+    private func updateCoreLogPump() {
+        let wanted = logViewers > 0 && activeUsedProfile && activeMode == .tun
+            && (state == .connected || state == .connecting)
+        if wanted {
+            startCoreLogPump()
+        } else {
+            // Paused, not reset: the last line seen is kept, so reopening the
+            // pane prints only what is new.
+            coreLogTask?.cancel()
+            coreLogTask = nil
+        }
+    }
+
+    /// A log pane appeared or went away.
+    func setLogVisible(_ visible: Bool) {
+        logViewers = max(0, logViewers + (visible ? 1 : -1))
+        updateCoreLogPump()
+    }
+
     private func startCoreLogPump() {
         // A server switch restarts the core but keeps the same log; leaving the
         // existing pump alone is what stops the last few lines being reprinted.
@@ -648,7 +753,7 @@ final class ConnectionManager {
                     guard let self, self.activeMode == .tun else { return }
                     if let tail { self.emitCoreLog(tail) }
                 }
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                try? await Task.sleep(for: .seconds(2), tolerance: .milliseconds(500))
             }
         }
     }
@@ -676,31 +781,8 @@ final class ConnectionManager {
 
     // MARK: - Uptime
 
-    private func startUptime() {
-        connectedSince = Date()
-        uptimeText = "00:00"
-        uptimeTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickUptime() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        uptimeTimer = timer
-    }
-
-    private func tickUptime() {
-        guard let since = connectedSince else { return }
-        let s = Int(Date().timeIntervalSince(since))
-        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
-        uptimeText = h > 0
-            ? String(format: "%d:%02d:%02d", h, m, sec)
-            : String(format: "%02d:%02d", m, sec)
-    }
-
     private func stopUptime() {
-        uptimeTimer?.invalidate()
-        uptimeTimer = nil
         connectedSince = nil
-        uptimeText = ""
     }
 
     // MARK: - Sleep / network recovery
@@ -784,11 +866,27 @@ final class ConnectionManager {
         guard autoReconnect, activeServer != nil else { return }
         guard state != .connecting else { return }
 
+        // Asking the helper is an XPC round trip; it is not made on the main
+        // thread, which is drawing the menu bar the user just woke up to.
+        let askHelper = activeUsedProfile && activeMode == .tun
+        Task { [weak self] in
+            let running = askHelper
+                ? await ConnectionManager.onTransport { TunManager.nativeCoreStatus.running }
+                : (self?.xray.isRunning ?? false)
+            self?.continueRecovery(coreRunning: running,
+                                   forceTransportRefresh: forceTransportRefresh,
+                                   reason: reason)
+        }
+    }
+
+    private func continueRecovery(coreRunning: Bool, forceTransportRefresh: Bool, reason: String) {
+        guard autoReconnect, activeServer != nil, state != .connecting else { return }
+
         // Core died while we were asleep/offline: do a full reconnect. Which
         // process to ask about depends on who is running the core — in TUN mode
         // with the native inbound it belongs to the helper, and `xray` here is
         // idle by design.
-        if !coreIsRunning {
+        if !coreRunning {
             appendLog("[warn] core not running after \(reason) — reconnecting\n")
             reconnect(forceTransportRefresh: forceTransportRefresh)
             return
@@ -816,14 +914,6 @@ final class ConnectionManager {
         }
     }
 
-    /// Whether the core carrying the active connection is alive.
-    private var coreIsRunning: Bool {
-        if activeUsedProfile && activeMode == .tun {
-            return TunManager.nativeCoreStatus.running
-        }
-        return xray.isRunning
-    }
-
     private func refreshTransport(reason: String) {
         guard let server = activeServer else { return }
         let listen = ports.listen
@@ -837,23 +927,29 @@ final class ConnectionManager {
         }
         switch activeMode {
         case .systemProxy:
-            let ok = SystemProxy.enable(socksPort: socks, httpPort: ports.http)
-            appendLog(ok ? "[info] system proxy re-applied after \(reason)\n"
-                        : "[error] could not re-apply system proxy after \(reason)\n")
+            let http = ports.http
+            Task { [weak self] in
+                let ok = await ConnectionManager.onTransport {
+                    SystemProxy.enable(socksPort: socks, httpPort: http)
+                }
+                self?.appendLog(ok ? "[info] system proxy re-applied after \(reason)\n"
+                                   : "[error] could not re-apply system proxy after \(reason)\n")
+            }
         case .tun:
             let socksAddr = "\(listen):\(socks)"
-            Task.detached(priority: .userInitiated) { [weak self] in
-                guard let self else { return }
-                let ips = Set(server.allAddresses.flatMap { TunManager.resolveIPs(host: $0) })
-                do {
-                    try TunManager.up(socksAddr: socksAddr, serverIPs: Array(ips))
-                    await MainActor.run {
-                        self.appendLog("[info] TUN re-pinned after \(reason)\n")
+            let hosts = server.allAddresses
+            Task { [weak self] in
+                let result = await ConnectionManager.onTransport {
+                    Result {
+                        let ips = Set(hosts.flatMap { TunManager.resolveIPs(host: $0) })
+                        try TunManager.up(socksAddr: socksAddr, serverIPs: Array(ips))
                     }
-                } catch {
-                    await MainActor.run {
-                        self.appendLog("[error] TUN re-pin failed after \(reason): \(error.localizedDescription)\n")
-                    }
+                }
+                switch result {
+                case .success:
+                    self?.appendLog("[info] TUN re-pinned after \(reason)\n")
+                case .failure(let error):
+                    self?.appendLog("[error] TUN re-pin failed after \(reason): \(error.localizedDescription)\n")
                 }
             }
         }
@@ -862,7 +958,7 @@ final class ConnectionManager {
     // MARK: - Logs
 
     /// Clears the in-memory log buffer (does not affect the running core).
-    func clearLogs() { logs = "" }
+    func clearLogs() { logs = ""; pendingLog = "" }
 
     /// Appends a line to the log the UI shows. Anything that runs alongside
     /// the tunnel — the bridges, the control API — reports through here, so
@@ -873,10 +969,12 @@ final class ConnectionManager {
         // wedges the UI, so lines are collected and flushed five times a
         // second, and a burst is summarised rather than kept.
         pendingLog += ConnectionManager.withoutANSI(text)
-        if pendingLog.count > 64_000 {
-            let dropped = pendingLog.count - 32_000
-            pendingLog = "[warn] \(dropped) characters of core output dropped\n"
-                + String(pendingLog.suffix(32_000))
+        // `utf8.count` is constant time on a native string; `count` walks every
+        // grapheme, and this runs once per line the core prints.
+        if pendingLog.utf8.count > 64_000 {
+            let dropped = pendingLog.utf8.count - 32_000
+            pendingLog = "[warn] \(dropped) bytes of core output dropped\n"
+                + ConnectionManager.tail(of: pendingLog, bytes: 32_000)
         }
         guard logFlushTask == nil else { return }
         logFlushTask = Task { @MainActor [weak self] in
@@ -912,11 +1010,30 @@ final class ConnectionManager {
     private func flushLog() {
         logFlushTask = nil
         guard !pendingLog.isEmpty else { return }
-        logs += pendingLog
+        var next = logs + pendingLog
         pendingLog = ""
-        if logs.count > 20_000 {
-            logs = String(logs.suffix(16_000))
+        if next.utf8.count > 20_000 {
+            next = ConnectionManager.tail(of: next, bytes: 16_000)
         }
+        logs = next
+    }
+
+    /// Roughly the last `bytes` of `text`, starting at a line boundary so the
+    /// pane never opens on half a line.
+    nonisolated static func tail(of text: String, bytes: Int) -> String {
+        let utf8 = text.utf8
+        guard utf8.count > bytes else { return text }
+        var start = utf8.index(utf8.endIndex, offsetBy: -bytes)
+        if let newline = utf8[start...].firstIndex(of: UInt8(ascii: "\n")) {
+            start = utf8.index(after: newline)
+        } else {
+            // No newline in reach: step past the continuation bytes of a
+            // character the cut landed inside.
+            while start < utf8.endIndex, utf8[start] & 0xC0 == 0x80 {
+                start = utf8.index(after: start)
+            }
+        }
+        return String(decoding: utf8[start...], as: UTF8.self)
     }
 }
 #endif

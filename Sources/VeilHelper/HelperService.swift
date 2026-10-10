@@ -24,9 +24,39 @@ final class HelperService: NSObject, VeilHelperProtocol, @unchecked Sendable {
     private var tun2socks: Process?
     private var core: Process?
 
+    /// Largest a log may grow to before it is emptied in place.
+    private static let logCap: UInt64 = 4 * 1024 * 1024
+    /// Checks the log sizes while a tunnel runs. The cap used to be applied only
+    /// when a process started, so a core left up for a week at debug level
+    /// wrote until the disk said no.
+    private var logTrimmer: DispatchSourceTimer?
+
     override init() {
         super.init()
         recoverOrphanedTunnel()
+        startLogTrimmer()
+    }
+
+    private func startLogTrimmer() {
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        // Generous leeway: nothing depends on when exactly this runs, and it
+        // should never be the reason the machine wakes up.
+        timer.schedule(deadline: .now() + 300, repeating: 300, leeway: .seconds(60))
+        timer.setEventHandler {
+            HelperService.trimLog(VeilHelperInfo.coreLogPath)
+            HelperService.trimLog(VeilHelperInfo.logPath)
+        }
+        timer.resume()
+        logTrimmer = timer
+    }
+
+    /// Empties `path` once it passes the cap. Safe while a process is writing
+    /// to it: logs are opened with `O_APPEND`, so the writer's next line lands
+    /// at the new end instead of leaving a hole the size of the old file.
+    private static func trimLog(_ path: String) {
+        var info = stat()
+        guard stat(path, &info) == 0, UInt64(info.st_size) > logCap else { return }
+        truncate(path, 0)
     }
 
     // MARK: - VeilHelperProtocol
@@ -367,12 +397,12 @@ final class HelperService: NSObject, VeilHelperProtocol, @unchecked Sendable {
         }
         // A log that grows without bound is its own outage. Start fresh when it
         // gets large rather than rotating: nothing here is worth keeping.
-        if let size = (try? fm.attributesOfItem(atPath: path)[.size] as? NSNumber)??.intValue,
-           size > 4 * 1024 * 1024 {
-            try? Data().write(to: URL(fileURLWithPath: path))
-        }
-        if let handle = FileHandle(forWritingAtPath: path) {
-            handle.seekToEndOfFile()
+        HelperService.trimLog(path)
+        // Append mode, so the log can be emptied in place while the process
+        // keeps writing to it.
+        let descriptor = open(path, O_WRONLY | O_APPEND | O_CLOEXEC)
+        if descriptor >= 0 {
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             process.standardOutput = handle
             process.standardError = handle
         }
@@ -381,13 +411,33 @@ final class HelperService: NSObject, VeilHelperProtocol, @unchecked Sendable {
     /// Last `count` non-empty lines of a log, for reporting a failure the app
     /// cannot read itself.
     private func lastLogLines(_ path: String, count: Int) -> String? {
-        guard let data = FileManager.default.contents(atPath: path),
-              let text = String(data: data, encoding: .utf8) else { return nil }
+        guard let text = HelperService.logTail(path) else { return nil }
         let lines = text.split(separator: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             .suffix(count)
         guard !lines.isEmpty else { return nil }
         return lines.joined(separator: "\n")
+    }
+
+    /// The last 32 KB of a log, decoded leniently.
+    ///
+    /// The app asks for the core's tail every couple of seconds while its log
+    /// pane is open. Reading the whole file for that — up to the cap, megabytes
+    /// at debug level — and splitting all of it into lines was the single most
+    /// expensive thing the helper did.
+    private static func logTail(_ path: String, bytes: UInt64 = 32 * 1024) -> String? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return nil }
+        let start = size > bytes ? size - bytes : 0
+        guard (try? handle.seek(toOffset: start)) != nil,
+              let data = try? handle.readToEnd(), !data.isEmpty else { return nil }
+        var text = String(decoding: data, as: UTF8.self)
+        // A cut into the middle of the file starts on half a line.
+        if start > 0, let newline = text.firstIndex(of: "\n") {
+            text = String(text[text.index(after: newline)...])
+        }
+        return text
     }
 
     // MARK: - Internals
@@ -458,8 +508,7 @@ final class HelperService: NSObject, VeilHelperProtocol, @unchecked Sendable {
     /// Last non-empty line tun2socks wrote, so a failure to start says why
     /// instead of only saying that the interface never appeared.
     private func lastLogLine() -> String? {
-        guard let data = FileManager.default.contents(atPath: VeilHelperInfo.logPath),
-              let text = String(data: data, encoding: .utf8) else { return nil }
+        guard let text = HelperService.logTail(VeilHelperInfo.logPath) else { return nil }
         let line = text.split(separator: "\n").last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         guard let line else { return nil }
         return String(line.prefix(300))

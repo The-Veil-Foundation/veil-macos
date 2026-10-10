@@ -53,9 +53,9 @@ struct ControlAPISection: View {
             }
 
             Toggle(loc("Clash-compatible API (dashboards)"),
-                   isOn: $store.settings.controlAPIEnabled)
-                .onChange(of: store.settings.controlAPIEnabled) { _, _ in store.save() }
-            if store.settings.controlAPIEnabled {
+                   isOn: $store.settings.clashAPIEnabled)
+                .onChange(of: store.settings.clashAPIEnabled) { _, _ in store.save() }
+            if store.settings.clashAPIEnabled {
                 HStack {
                     Text(loc("Clash API port"))
                     Spacer()

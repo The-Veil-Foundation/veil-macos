@@ -98,15 +98,12 @@ enum ControlHTTP {
         }
     }
 
+    /// Where `needle` first occurs, as offsets from the start of `haystack`.
+    /// The buffer is re-parsed after every chunk, so this must not copy it.
     private static func range(of needle: Data, in haystack: Data) -> Range<Int>? {
-        guard haystack.count >= needle.count else { return nil }
-        let bytes = [UInt8](haystack), pattern = [UInt8](needle)
-        for start in 0...(bytes.count - pattern.count) {
-            if Array(bytes[start..<(start + pattern.count)]) == pattern {
-                return start..<(start + pattern.count)
-            }
-        }
-        return nil
+        guard let found = haystack.range(of: needle) else { return nil }
+        let base = haystack.startIndex
+        return (found.lowerBound - base)..<(found.upperBound - base)
     }
 }
 
@@ -158,12 +155,15 @@ final class ControlServer {
         }
         let parameters = NWParameters.tcp
         // Loopback only: nothing off this machine may reach the API, whatever
-        // the firewall happens to allow.
+        // the firewall happens to allow. The interface requirement alone still
+        // bound the wildcard address — the socket showed up as `*:port` — so the
+        // listener is pinned to 127.0.0.1 itself.
         parameters.requiredInterfaceType = .loopback
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: nwPort)
         parameters.allowLocalEndpointReuse = true
 
         do {
-            let listener = try NWListener(using: parameters, on: nwPort)
+            let listener = try NWListener(using: parameters)
             self.router = ControlRouter(backend: backend, token: token)
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in self?.accept(connection) }

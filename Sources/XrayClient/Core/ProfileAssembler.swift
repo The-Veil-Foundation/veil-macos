@@ -66,7 +66,10 @@ enum ProfileAssembler {
         profile.cacheFilePath = input.cacheFilePath.isEmpty
             ? userCachePath : input.cacheFilePath
 
-        profile.clashAPI.enabled = input.settings.controlAPIEnabled
+        // A `clash_mode` rule reads the mode from the Clash server, so it stays
+        // on for anyone whose rules use one, asked for or not.
+        profile.clashAPI.enabled = input.settings.clashAPIEnabled
+            || profile.rules.contains { $0.enabled && !$0.clashMode.isEmpty }
         profile.clashAPI.port = input.settings.controlAPIPort
         profile.clashAPI.secret = input.clashSecret
 

@@ -139,8 +139,11 @@ struct AppSettings: Codable, Equatable {
     var tunStrictRoute: Bool = false
     var tunStack: String = ""
 
-    // Local control API (Clash-compatible, served by sing-box).
-    var controlAPIEnabled: Bool = true
+    // Local control API (Clash-compatible, served by sing-box). Off unless
+    // asked for: it is one more listening port, and its secret is random per
+    // launch, so nothing outside Veil could use it anyway. Stored under a new
+    // key so the old default-on value is not carried forward.
+    var clashAPIEnabled: Bool = false
     var controlAPIPort: Int = 9090
 
     // Veil's own control API: read and write the routing configuration from
@@ -218,7 +221,7 @@ struct AppSettings: Codable, Equatable {
         useNativeTun = get(.useNativeTun, true)
         tunStrictRoute = get(.tunStrictRoute, false)
         tunStack = get(.tunStack, "")
-        controlAPIEnabled = get(.controlAPIEnabled, true)
+        clashAPIEnabled = get(.clashAPIEnabled, false)
         controlAPIPort = get(.controlAPIPort, 9090)
         veilAPIEnabled = get(.veilAPIEnabled, false)
         veilAPIPort = get(.veilAPIPort, 9091)

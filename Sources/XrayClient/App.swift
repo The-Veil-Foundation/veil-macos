@@ -71,7 +71,15 @@ struct XrayClientApp: App {
     }
 
     /// Everything that has to happen once, when the main window first appears.
+    ///
+    /// `onAppear` fires again every time the window is reopened from the menu
+    /// bar. Running all of this a second time tore the live TUN core down (the
+    /// crash cleanup below cannot tell a leftover tunnel from the current one),
+    /// reconnected on top of a working connection and re-registered the login
+    /// item — so the guard is not an optimisation.
     private func startUp() {
+        guard !appDelegate.didStartUp else { return }
+        appDelegate.didStartUp = true
         loc.language = store.settings.language
         connection.bind(store)
         control.onLog = { [weak connection] line in
@@ -88,8 +96,16 @@ struct XrayClientApp: App {
             NotificationManager.requestAuthorization()
         }
         // Recover from a previous crash/force-quit that left the tunnel routes
-        // in place (which kills internet).
-        TunManager.emergencyCleanup()
+        // in place (which kills internet). Three XPC round trips, so off the
+        // main thread — and auto-connect waits for it, or the cleanup could
+        // tear down the tunnel it had just brought up.
+        let autoConnectID = store.settings.autoConnectOnLaunch ? store.selectedServerID : nil
+        Task {
+            await ConnectionManager.onTransport { TunManager.emergencyCleanup() }
+            if let server = store.server(withID: autoConnectID), !connection.isConnected {
+                connection.connect(to: server)
+            }
+        }
         Task { await SubscriptionService.refreshDue(store) }
         // Warm the process catalog so the control API's /v1/apps has data
         // before the picker is ever opened.
@@ -116,12 +132,43 @@ struct XrayClientApp: App {
         } else {
             updater.checkInBackgroundIfDue()
         }
-        // Auto-connect to the last server on launch, if enabled.
-        if store.settings.autoConnectOnLaunch,
-           let server = store.server(withID: store.selectedServerID) {
-            connection.connect(to: server)
-        }
+        scheduleBackgroundRefresh()
     }
+
+    /// Keeps subscriptions, community lists and the update check fresh while
+    /// the app sits in the menu bar for days.
+    ///
+    /// They used to be checked only at launch — and, by accident, whenever the
+    /// window was reopened. The system scheduler picks the moment itself, so
+    /// the work lands alongside other wake-ups instead of adding its own.
+    private func scheduleBackgroundRefresh() {
+        let scheduler = NSBackgroundActivityScheduler(identifier: "dev.local.veil.refresh")
+        scheduler.repeats = true
+        scheduler.interval = 60 * 60
+        scheduler.tolerance = 15 * 60
+        scheduler.qualityOfService = .utility
+        let store = store
+        let updater = updater
+        scheduler.schedule { completion in
+            let done = SchedulerCompletion(completion)
+            Task { @MainActor in
+                await SubscriptionService.refreshDue(store)
+                await CommunityListManager.shared.refreshDue(store.settings)
+                updater.checkInBackgroundIfDue()
+                done.finish()
+            }
+        }
+        appDelegate.refreshScheduler = scheduler
+    }
+}
+
+/// Carries the scheduler's completion handler across to the main actor.
+private final class SchedulerCompletion: @unchecked Sendable {
+    private let handler: NSBackgroundActivityScheduler.CompletionHandler
+    init(_ handler: @escaping NSBackgroundActivityScheduler.CompletionHandler) {
+        self.handler = handler
+    }
+    func finish() { handler(.finished) }
 }
 
 /// Injects the app-wide observable objects and the appearance/writing-direction
@@ -214,6 +261,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// close-to-tray.
     var dockHidden = false
     weak var connection: ConnectionManager?
+    /// Set once the first window has run the start-up work.
+    var didStartUp = false
+    var refreshScheduler: NSBackgroundActivityScheduler?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Keep running in the menu bar when close-to-tray is enabled.
@@ -224,6 +274,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Always restore routes/proxy on quit, even if the user force-quits the
         // window, so the machine isn't left without internet.
         connection?.disconnect()
+        // Teardown is queued off the main thread; it has to finish before the
+        // process does, or the machine is left pointing at a dead proxy.
+        ConnectionManager.waitForTransport()
         // Belt-and-suspenders: ensure any orphaned tunnel is torn down.
         TunManager.emergencyCleanup()
     }

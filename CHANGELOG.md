@@ -3,6 +3,50 @@
 All notable changes to Veil are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.11.0] — 2026-10-11
+
+### Fixed
+
+- Reopening the window from the menu bar no longer tears down a running TUN
+  connection. The start-up work — crash cleanup, auto-connect, login-item
+  registration — ran again on every reopen, and the crash cleanup stopped the
+  live core while the app went on showing "Connected".
+- The window no longer redraws its whole server list once a second while
+  connected. The uptime clock is drawn by the system from the connection's
+  start time; the app timer that drove it is gone.
+- In TUN mode the helper reads only the last 32 KB of the core's log instead of
+  the whole file, and the app asks for it only while the log pane is open. The
+  log was fetched every two seconds for as long as the tunnel was up, window
+  or no window.
+- The helper's logs are capped at 4 MB while a tunnel runs, not only when it
+  starts.
+- Disconnecting, recovering after sleep and re-applying the system proxy no
+  longer freeze the window: `networksetup` and the helper's XPC calls run on a
+  serial queue off the main thread, in the order they were asked for.
+- App Nap no longer throttles Veil and the cores it runs while a connection is
+  up and the window is closed to the menu bar.
+- Subscriptions, community lists and the update check are refreshed in the
+  background while Veil sits in the menu bar, not only at launch.
+- The temporary core configuration, which holds the node's credentials, is
+  written owner-only and removed when the core stops. Every server switch used
+  to leave one behind in the temp folder.
+- The log pane is an AppKit text view: new output is appended, a selection
+  survives the next line, and it follows the end only when already there.
+
+### Changed
+
+- The Clash-compatible API (port 9090) is off by default. Its secret was random
+  per launch and never shown, so nothing outside Veil could use it — it was a
+  listening port for nothing. It stays on for anyone whose rules use
+  `clash_mode`.
+- Xray bridges open a SOCKS port only, not an unused HTTP one beside it.
+- The control API binds 127.0.0.1 itself rather than the wildcard address
+  restricted to the loopback interface.
+- The connection health check runs once a minute instead of every 30 seconds,
+  re-checking 10 seconds after a miss, so a dead link is still caught in about
+  70 seconds.
+- Helper protocol version 7: reinstall the helper after updating.
+
 ## [1.10.0] — 2026-09-22
 
 ### Added
