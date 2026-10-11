@@ -5,152 +5,187 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Veil — Native macOS VPN client for Xray-core</title>
 <meta name="description" content="Veil is a native macOS VPN client for the Xray-core and sing-box proxy engines. VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, AnyTLS, Reality. System Proxy & TUN modes, subscriptions, QR import, professional routing.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Cpath d='M50 82 L22 70 L22 40 Q22 24 50 18 Q78 24 78 40 L78 70 Z' fill='%23ffffff' opacity='.96'/%3E%3Cpath d='M36 32 L44 32 L50 58 L56 32 L64 32 L52 70 L48 70 Z' fill='%237c3aed'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23000'/%3E%3Cpath d='M50 82 L22 70 L22 40 Q22 24 50 18 Q78 24 78 40 L78 70 Z' fill='%23f2f2f2'/%3E%3Cpath d='M36 32 L44 32 L50 58 L56 32 L64 32 L52 70 L48 70 Z' fill='%23000'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+  /* Archivo is served from this site rather than Google Fonts: it loads where Google is
+     blocked, and a VPN client's page should not report its visitors to a third party. */
+  @font-face{
+    font-family:"Archivo"; src:url("fonts/archivo-latin.woff2") format("woff2");
+    font-weight:100 900; font-stretch:62% 125%; font-style:normal; font-display:swap;
+    unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  }
+  /* Ink: black, white and one grey. The type carries the page; the wordmark is the only loud thing.
+     Dark is the default; a light system appearance turns the same page into black ink on white. */
   :root{
-    --bg:#0b0b12; --bg2:#11111c; --card:#15151f; --line:#23232f;
-    --txt:#e9e9f2; --mut:#a1a1b3; --ind:#6366f1; --vio:#7c3aed; --grn:#34d399;
-    --grad:linear-gradient(120deg,#6366f1,#7c3aed);
+    --bg:#000; --fg:#f2f2f2; --dim:#9a9a9a; --faint:#767676; --line:#1f1f1f; --line2:#333;
+    --nav:rgba(0,0,0,.82); --btn-hover:#fff;
+    --font:"Archivo",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --gut:clamp(20px,4vw,56px);
+    color-scheme:dark;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#fff; --fg:#000; --dim:#5e5e5e; --faint:#767676; --line:#e8e8e8; --line2:#cfcfcf;
+      --nav:rgba(255,255,255,.85); --btn-hover:#2a2a2a;
+      color-scheme:light;
+    }
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg); color:var(--txt); line-height:1.6; -webkit-font-smoothing:antialiased;
-    overflow-x:hidden;
+    font-family:var(--font); font-size:16px; line-height:1.55;
+    background:var(--bg); color:var(--fg); -webkit-font-smoothing:antialiased; overflow-x:hidden;
   }
   a{color:inherit;text-decoration:none}
-  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  ::selection{background:var(--fg);color:var(--bg)}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-offset:3px;border-radius:2px}
+  .wrap{max-width:1240px;margin:0 auto;padding-inline:var(--gut)}
 
-  /* Nav */
-  nav{
-    position:sticky;top:0;z-index:50;backdrop-filter:saturate(180%) blur(14px);
-    background:rgba(11,11,18,.72);border-bottom:1px solid var(--line);
-  }
-  .nav-in{display:flex;align-items:center;justify-content:space-between;height:62px}
-  .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:18px}
-  .logo{width:30px;height:30px;border-radius:9px}
-  .nav-links{display:flex;align-items:center;gap:22px}
-  .nav-links a{color:var(--mut);font-size:14px;font-weight:500;transition:color .2s}
-  .nav-links a:hover{color:var(--txt)}
-  .lang{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
-  .lang button{
-    background:transparent;color:var(--mut);border:0;padding:6px 11px;font-size:13px;
-    font-weight:600;cursor:pointer;transition:.2s
-  }
-  .lang button.on{background:var(--grad);color:#fff}
-  @media(max-width:680px){.nav-links a.hide-sm{display:none}}
-
-  /* Hero */
-  .hero{position:relative;padding:96px 0 72px;text-align:center;overflow:hidden}
-  .hero::before{
-    content:"";position:absolute;inset:0;z-index:-1;
-    background:radial-gradient(900px 420px at 50% -10%,rgba(124,58,237,.35),transparent 70%),
-               radial-gradient(700px 360px at 80% 10%,rgba(99,102,241,.22),transparent 70%);
-  }
-  .hero .logo-lg{width:96px;height:96px;border-radius:24px;margin:0 auto 26px;display:block;
-    box-shadow:0 20px 60px rgba(124,58,237,.45)}
-  .hero h1{font-size:clamp(34px,6vw,60px);font-weight:800;letter-spacing:-.02em;line-height:1.05}
-  .hero h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p.sub{margin:20px auto 0;max-width:640px;font-size:clamp(16px,2.4vw,20px);color:var(--mut)}
-  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:36px}
-  .btn{padding:13px 26px;border-radius:12px;font-weight:600;font-size:15px;transition:.2s;border:1px solid transparent}
-  .btn-p{background:var(--grad);color:#fff;box-shadow:0 8px 24px rgba(124,58,237,.4)}
-  .btn-p:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(124,58,237,.5)}
-  .btn-s{background:var(--card);border-color:var(--line);color:var(--txt)}
-  .btn-s:hover{border-color:var(--vio)}
-  .meta{margin-top:18px;font-size:13px;color:var(--mut)}
-
-  /* Sections */
-  section{padding:64px 0}
-  h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.02em;text-align:center}
-  .lead{text-align:center;color:var(--mut);max-width:620px;margin:14px auto 0;font-size:16px}
-
-  /* Feature grid */
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:46px}
-  @media(max-width:880px){.grid{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:560px){.grid{grid-template-columns:1fr}}
-  .card{
-    background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;
-    transition:.25s
-  }
-  .card:hover{border-color:var(--vio);transform:translateY(-3px)}
-  .ic{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;margin-bottom:16px;
-    background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(124,58,237,.2));font-size:22px}
-  .card h3{font-size:17px;font-weight:700;margin-bottom:7px}
-  .card p{font-size:14px;color:var(--mut)}
-
-  /* Modes */
-  .modes{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:46px}
-  @media(max-width:680px){.modes{grid-template-columns:1fr}}
-  .mode{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:30px}
-  .mode .tag{display:inline-block;font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;
-    background:rgba(124,58,237,.18);color:#c4b5fd;margin-bottom:14px}
-  .mode h3{font-size:21px;font-weight:700;margin-bottom:10px}
-  .mode ul{list-style:none;margin-top:14px}
-  .mode li{font-size:14px;color:var(--mut);padding-left:24px;position:relative;margin:8px 0}
-  .mode li::before{content:"✓";position:absolute;left:0;color:var(--grn);font-weight:700}
-
-  /* Routing band */
-  .band{background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  .route-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;margin-top:40px}
-  @media(max-width:760px){.route-grid{grid-template-columns:1fr}}
-  .route-list li{font-size:15px;margin:12px 0;padding-left:26px;position:relative;color:var(--mut)}
-  .route-list li b{color:var(--txt)}
-  .route-list li::before{content:"▸";position:absolute;left:0;color:var(--vio)}
-  .codebox{background:#0a0a10;border:1px solid var(--line);border-radius:14px;padding:20px;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:#cbd5e1;overflow:auto}
-  .codebox .k{color:#c4b5fd}.codebox .s{color:#86efac}.codebox .c{color:#64748b}
-
-  /* Steps */
-  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:46px}
-  @media(max-width:680px){.steps{grid-template-columns:1fr}}
-  .step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;position:relative}
-  .step .n{font-size:13px;font-weight:800;color:var(--vio)}
-  .step h3{font-size:17px;margin:8px 0 6px}
-  .step p{font-size:14px;color:var(--mut)}
-
-  /* Download */
-  .dl{text-align:center}
-  .dl .box{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:48px 32px;margin-top:36px}
-  .pills{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:22px}
-  .pill{font-size:13px;color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:6px 14px}
-
-  /* Support */
-  .donate{margin-top:28px;display:flex;flex-direction:column;gap:16px;align-items:center}
-  .addr{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;
-        background:#0a0a10;border:1px solid var(--line);border-radius:14px;padding:14px 18px;max-width:100%}
-  .addr .chain{font-size:12px;font-weight:700;letter-spacing:.06em;color:#c4b5fd}
-  .addr code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
-             color:var(--txt);word-break:break-all;text-align:left}
-  .addr button{padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600}
-
-  footer{border-top:1px solid var(--line);padding:40px 0;color:var(--mut);font-size:13px;text-align:center}
-  footer a{color:#c4b5fd}
-  .disc{max-width:680px;margin:14px auto 0;font-size:12px;color:#6b6b7d}
   body.lang-en [data-ru]{display:none}
   body.lang-ru [data-en]{display:none}
+
+  /* Nav */
+  nav{position:sticky;top:0;z-index:50;background:var(--nav);backdrop-filter:blur(12px)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:60px;font-size:14px}
+  .brand{font-weight:700;font-size:16px;letter-spacing:.01em}
+  .nav-links{display:flex;align-items:center;gap:26px;color:var(--dim)}
+  .nav-links a:hover{color:var(--fg)}
+  .lang{display:flex;gap:10px}
+  .lang button{background:none;border:0;font:inherit;color:var(--faint);cursor:pointer;padding:4px 0}
+  .lang button:hover{color:var(--dim)}
+  .lang button.on{color:var(--fg)}
+  @media(max-width:720px){.nav-links a.hide-sm{display:none}.nav-links{gap:18px}}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;background:var(--fg);color:var(--bg);padding:12px 22px;border-radius:999px;font-weight:600;font-size:15px;border:0;cursor:pointer;font-family:inherit;transition:background .15s}
+  .btn:hover{background:var(--btn-hover)}
+  .lnk{display:inline-flex;align-items:center;padding:12px 2px;font-size:15px;border-bottom:1px solid var(--faint);transition:border-color .15s;line-height:1.1;background:none;color:var(--fg);font-family:inherit;cursor:pointer;border-top:0;border-left:0;border-right:0}
+  .lnk:hover{border-bottom-color:var(--fg)}
+  .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}
+
+  /* Hero */
+  .hero{overflow:hidden;padding-top:clamp(56px,9vw,120px)}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:48px clamp(32px,5vw,80px);align-items:end}
+  .hero h1{font-weight:500;font-size:clamp(34px,4.6vw,64px);line-height:1.04;letter-spacing:-.03em;max-width:15ch;text-wrap:balance}
+  .hero-side{display:grid;gap:26px;max-width:460px}
+  .engines{display:grid;grid-template-columns:1fr 1fr;gap:24px;font-size:15px}
+  .engines dt{color:var(--dim);font-size:13px;margin-bottom:6px}
+  .engines dd{line-height:1.7}
+  .hero-side p{color:var(--dim)}
+  .hero .meta{color:var(--faint);font-size:13px}
+  .word{
+    display:block;font-weight:900;font-stretch:125%;
+    /* A first guess at spanning the content column; fitWord() then measures the real
+       glyphs, so the word still fits when a fallback font with other widths is used. */
+    font-size:calc((min(100vw,1240px) - 2 * var(--gut)) / 2.13);line-height:.74;letter-spacing:-.05em;
+    margin-top:clamp(40px,6vw,88px);transform:translateY(16%);
+    user-select:none;white-space:nowrap;
+    animation:rise 1.1s cubic-bezier(.2,.7,.1,1) both;
+  }
+  @keyframes rise{from{transform:translateY(62%)}to{transform:translateY(16%)}}
+  @media(max-width:820px){.hero-grid{grid-template-columns:1fr}}
+
+  /* Sections */
+  .sec{border-top:1px solid var(--line);padding-block:clamp(64px,9vw,128px)}
+  .sec-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:32px clamp(32px,5vw,80px)}
+  .sec-h{font-weight:600;font-size:15px;letter-spacing:.005em;color:var(--fg)}
+  .sec-h small{display:block;color:var(--dim);font-weight:400;font-size:15px;margin-top:4px;max-width:22ch}
+  .lead{font-size:clamp(22px,2.4vw,32px);line-height:1.2;letter-spacing:-.02em;font-weight:500;max-width:26ch;text-wrap:balance}
+  @media(max-width:820px){.sec-grid{grid-template-columns:1fr}}
+
+  /* Features */
+  .feats{display:grid;grid-template-columns:1fr 1fr;gap:0 clamp(32px,4vw,64px)}
+  .feat{padding:22px 0 26px;border-top:1px solid var(--line);display:grid;gap:6px;align-content:start}
+  .feat h3{font-weight:600;font-size:16px}
+  .feat p{color:var(--dim);font-size:15px;max-width:52ch}
+  .feat.wide{grid-column:1/-1;padding-top:0;border-top:0;padding-bottom:40px}
+  .feat.wide p{color:var(--fg);font-size:clamp(20px,2vw,26px);line-height:1.3;letter-spacing:-.015em;max-width:40ch}
+  @media(max-width:640px){.feats{grid-template-columns:1fr}}
+
+  /* Modes */
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:48px clamp(32px,4vw,64px)}
+  .mode{display:grid;gap:14px;align-content:start}
+  .mode .big{font-weight:800;font-stretch:125%;font-size:clamp(48px,6vw,88px);line-height:.9;letter-spacing:-.04em}
+  .mode .tag{color:var(--dim);font-size:14px}
+  .mode p{max-width:40ch}
+  .mode ul{list-style:none;margin-top:8px}
+  .mode li{padding:12px 0;border-top:1px solid var(--line);color:var(--dim);font-size:15px}
+  @media(max-width:640px){.modes{grid-template-columns:1fr}}
+
+  /* Routing */
+  .route{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px clamp(32px,4vw,64px);margin-top:40px}
+  .route ul{list-style:none}
+  .route li{padding:14px 0;border-top:1px solid var(--line);color:var(--dim);font-size:15px}
+  .route li b{color:var(--fg);font-weight:600}
+  .code{font-family:var(--mono);font-size:14px;line-height:2;white-space:pre;overflow-x:auto;color:var(--fg);align-self:start;padding-top:14px;border-top:1px solid var(--line)}
+  .code .c{color:var(--faint)}
+  .code .k{color:var(--dim)}
+  @media(max-width:900px){.route{grid-template-columns:1fr}}
+
+  /* Steps: a real sequence, so it is numbered */
+  .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px clamp(24px,3vw,48px);list-style:none;counter-reset:s}
+  .steps li{display:grid;gap:10px;align-content:start;counter-increment:s}
+  .steps li::before{content:counter(s);font-weight:800;font-stretch:125%;font-size:clamp(56px,6vw,88px);line-height:.9;letter-spacing:-.04em;margin-bottom:10px}
+  .steps h3{font-weight:600;font-size:17px}
+  .steps p{color:var(--dim);font-size:15px;max-width:34ch}
+  .steps code{font-family:var(--mono);font-size:13px;color:var(--fg)}
+  @media(max-width:760px){.steps{grid-template-columns:1fr}}
+
+  /* Download */
+  .dl-body{display:grid;gap:36px}
+  .specs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;border-top:1px solid var(--line);padding-top:22px}
+  .specs dt{color:var(--dim);font-size:13px;margin-bottom:4px}
+  .specs dd{font-size:15px}
+  .note{color:var(--faint);font-size:14px;max-width:60ch}
+  @media(max-width:760px){.specs{grid-template-columns:1fr 1fr}}
+
+  /* Support */
+  .sup-body{display:grid;gap:32px}
+  .sup-body > p{color:var(--dim);max-width:62ch}
+  .addr{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;border:1px solid var(--line2);border-radius:14px;padding:18px 20px;max-width:640px}
+  .addr .chain{font-weight:600;font-size:14px}
+  .addr code{font-family:var(--mono);font-size:14px;word-break:break-all;flex:1 1 260px;min-width:0}
+  .addr .lnk{padding:4px 0}
+
+  /* Footer */
+  footer{border-top:1px solid var(--line);padding-block:48px 64px;color:var(--dim);font-size:14px}
+  .foot{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:24px clamp(32px,5vw,80px)}
+  .foot .links{display:flex;flex-wrap:wrap;gap:8px 24px;color:var(--fg)}
+  .foot a:hover{text-decoration:underline;text-underline-offset:3px}
+  .foot .credit{margin-top:14px}
+  .foot .credit a{color:var(--fg)}
+  .disc{margin-top:14px;font-size:13px;color:var(--faint);max-width:68ch}
+  @media(max-width:820px){.foot{grid-template-columns:1fr}}
+
+  /* Language switch: a short crossfade. View Transitions where supported, an opacity fade otherwise. */
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.32s;animation-timing-function:ease}
+  body > *{transition:opacity .16s ease}
+  body.lang-fading > *{opacity:0}
+
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .word{animation:none}
+    body > *{transition:none}
+    ::view-transition-old(root),::view-transition-new(root){animation:none}
+  }
 </style>
 </head>
-<body>
-
-<svg width="0" height="0" style="position:absolute"><defs>
-  <linearGradient id="vg" x1="0" y1="1" x2="1" y2="0">
-    <stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#7c3aed"/>
-  </linearGradient></defs></svg>
+<body class="lang-en">
 
 <nav>
   <div class="wrap nav-in">
-    <div class="brand">
-      <svg class="logo" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="url(#vg)"/><path d="M50 82 L22 70 L22 40 Q22 24 50 18 Q78 24 78 40 L78 70 Z" fill="#fff" opacity=".96"/><path d="M36 32 L44 32 L50 58 L56 32 L64 32 L52 70 L48 70 Z" fill="#7c3aed"/></svg>
-      Veil
-    </div>
+    <a class="brand" href="#top">Veil</a>
     <div class="nav-links">
       <a href="#features" class="hide-sm" data-en>Features</a><a href="#features" class="hide-sm" data-ru>Возможности</a>
       <a href="#routing" class="hide-sm" data-en>Routing</a><a href="#routing" class="hide-sm" data-ru>Маршрутизация</a>
       <a href="#download" data-en>Download</a><a href="#download" data-ru>Скачать</a>
-      <a href="#support" data-en>Support</a><a href="#support" data-ru>Поддержать</a>
-      <div class="lang">
+      <a href="#support" class="hide-sm" data-en>Support</a><a href="#support" class="hide-sm" data-ru>Поддержать</a>
+      <div class="lang" role="group" aria-label="Language">
         <button id="b-en" class="on" onclick="setLang('en')">EN</button>
         <button id="b-ru" onclick="setLang('ru')">RU</button>
       </div>
@@ -158,227 +193,236 @@
   </div>
 </nav>
 
-<header class="hero">
+<header class="hero" id="top">
   <div class="wrap">
-    <svg class="logo-lg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="url(#vg)"/><path d="M50 82 L22 70 L22 40 Q22 24 50 18 Q78 24 78 40 L78 70 Z" fill="#fff" opacity=".96"/><path d="M36 32 L44 32 L50 58 L56 32 L64 32 L52 70 L48 70 Z" fill="#7c3aed"/></svg>
-    <h1 data-en>The native <span class="g">Xray</span> client for macOS</h1>
-    <h1 data-ru>Нативный <span class="g">Xray</span>-клиент для macOS</h1>
-    <p class="sub" data-en>VLESS · VMess · Trojan · Shadowsocks · Hysteria2 · TUIC · WireGuard · AnyTLS · Reality. System-proxy and full-device TUN tunneling, subscription profiles, and professional domain/IP routing — in a clean menu-bar app.</p>
-    <p class="sub" data-ru>VLESS · VMess · Trojan · Shadowsocks · Hysteria2 · TUIC · WireGuard · AnyTLS · Reality. Системный прокси и полный TUN-туннель, профили подписок и профессиональная маршрутизация по доменам/IP — в аккуратном приложении в меню-баре.</p>
-    <div class="cta">
-      <a class="btn btn-p" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download for macOS</a>
-      <a class="btn btn-p" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать для macOS</a>
-      <a class="btn btn-s" href="https://github.com/faustyu1/veil" data-en>View on GitHub</a>
-      <a class="btn btn-s" href="https://github.com/faustyu1/veil" data-ru>Открыть на GitHub</a>
+    <div class="hero-grid">
+      <h1 data-en>A quiet VPN client for macOS, built on Xray and sing-box.</h1>
+      <h1 data-ru>Тихий <span style="white-space:nowrap">VPN-клиент</span> для macOS на&nbsp;Xray и&nbsp;sing-box.</h1>
+      <div class="hero-side">
+        <dl class="engines">
+          <div><dt>Xray-core</dt><dd>VLESS<br>VMess<br>Trojan<br>Shadowsocks</dd></div>
+          <div><dt>sing-box</dt><dd>Hysteria2<br>TUIC<br>WireGuard<br>AnyTLS</dd></div>
+        </dl>
+        <p data-en>System proxy or a full-device TUN tunnel, subscription profiles and rule-based routing, all from the menu bar.</p>
+        <p data-ru>Системный прокси или полный TUN-туннель, профили подписок и маршрутизация по правилам — всё из меню-бара.</p>
+        <div class="actions">
+          <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download for macOS</a>
+          <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать для macOS</a>
+          <a class="lnk" href="https://github.com/faustyu1/veil">GitHub</a>
+        </div>
+        <p class="meta" data-en>Free and open source. macOS 14 or later, Apple Silicon and Intel.</p>
+        <p class="meta" data-ru>Бесплатно, с открытым кодом. macOS 14 и новее, Apple Silicon и Intel.</p>
+      </div>
     </div>
-    <p class="meta" data-en>Free & open source · macOS 14+ · Apple Silicon & Intel</p>
-    <p class="meta" data-ru>Бесплатно и с открытым кодом · macOS 14+ · Apple Silicon и Intel</p>
+    <span class="word" aria-hidden="true"><span>Veil</span></span>
   </div>
 </header>
 
-<section id="features">
-  <div class="wrap">
-    <h2 data-en>Everything you need</h2><h2 data-ru>Всё, что нужно</h2>
-    <p class="lead" data-en>Built on Xray-core, designed for everyday use.</p>
-    <p class="lead" data-ru>На базе Xray-core, удобно для ежедневного использования.</p>
-    <div class="grid">
-      <div class="card"><div class="ic">🔐</div>
+<section class="sec" id="features">
+  <div class="wrap sec-grid">
+    <h2 class="sec-h"><span data-en>Features</span><span data-ru>Возможности</span></h2>
+    <div class="feats">
+      <div class="feat wide">
         <h3 data-en>Modern protocols</h3><h3 data-ru>Современные протоколы</h3>
-        <p data-en>VLESS, VMess, Trojan, Shadowsocks with Reality & TLS over tcp/ws/grpc/http/xhttp (incl. xtls-rprx-vision & post-quantum), plus Hysteria2, TUIC, WireGuard & AnyTLS via a bundled sing-box core.</p>
-        <p data-ru>VLESS, VMess, Trojan, Shadowsocks с Reality и TLS поверх tcp/ws/grpc/http/xhttp (включая xtls-rprx-vision и постквантовое шифрование), а также Hysteria2, TUIC, WireGuard и AnyTLS через встроенное ядро sing-box.</p>
+        <p data-en>VLESS, VMess, Trojan and Shadowsocks with Reality and TLS over tcp, ws, grpc, http and xhttp, including xtls-rprx-vision and post-quantum encryption. Hysteria2, TUIC, WireGuard and AnyTLS run on a bundled sing-box core.</p>
+        <p data-ru>VLESS, VMess, Trojan и Shadowsocks с Reality и TLS поверх tcp, ws, grpc, http и xhttp, включая xtls-rprx-vision и постквантовое шифрование. Hysteria2, TUIC, WireGuard и AnyTLS работают на встроенном ядре sing-box.</p>
       </div>
-      <div class="card"><div class="ic">🌐</div>
+      <div class="feat">
         <h3 data-en>Two tunnel modes</h3><h3 data-ru>Два режима туннеля</h3>
-        <p data-en>System proxy for browsers, or full-device TUN that routes every app — Telegram, terminal, games, UDP.</p>
-        <p data-ru>Системный прокси для браузеров или полный TUN, маршрутизирующий все приложения — Telegram, терминал, игры, UDP.</p>
+        <p data-en>System proxy for browsers, or a full-device TUN that routes every app: Telegram, the terminal, games, UDP.</p>
+        <p data-ru>Системный прокси для браузеров или полный TUN для всех приложений: Telegram, терминал, игры, UDP.</p>
       </div>
-      <div class="card"><div class="ic">📡</div>
+      <div class="feat">
         <h3 data-en>Subscriptions</h3><h3 data-ru>Подписки</h3>
-        <p data-en>Import subscription URLs as profile groups. Reads traffic, expiry and description from standard headers; auto-updates.</p>
-        <p data-ru>Импорт подписок как групп профилей. Читает трафик, срок и описание из заголовков; автообновление.</p>
+        <p data-en>Import subscription URLs as profile groups. Traffic, expiry and description come from standard headers, and profiles update themselves.</p>
+        <p data-ru>Подписки импортируются как группы профилей. Трафик, срок и описание берутся из стандартных заголовков, профили обновляются сами.</p>
       </div>
-      <div class="card"><div class="ic">🧭</div>
+      <div class="feat">
         <h3 data-en>Professional routing</h3><h3 data-ru>Профессиональная маршрутизация</h3>
-        <p data-en>Presets and a full rule editor with geosite/geoip databases downloaded from GitHub. v2rayN-style control.</p>
-        <p data-ru>Пресеты и полный редактор правил с базами geosite/geoip, загружаемыми с GitHub. Управление в стиле v2rayN.</p>
+        <p data-en>Presets and a full rule editor with geosite and geoip databases downloaded from GitHub, in the style of v2rayN.</p>
+        <p data-ru>Пресеты и полный редактор правил с базами geosite и geoip, загружаемыми с GitHub, как в v2rayN.</p>
       </div>
-      <div class="card"><div class="ic">⚡</div>
+      <div class="feat">
         <h3 data-en>Instant switching</h3><h3 data-ru>Мгновенное переключение</h3>
-        <p data-en>Switching servers keeps the transport up and re-pins the route — sub-second, with no password prompt.</p>
-        <p data-ru>При смене сервера транспорт не пересоздаётся — переключение за доли секунды, без запроса пароля.</p>
+        <p data-en>Changing servers keeps the transport up and re-pins the route. It takes under a second and never asks for a password.</p>
+        <p data-ru>При смене сервера транспорт остаётся поднятым, меняется только маршрут. Меньше секунды и без запроса пароля.</p>
       </div>
-      <div class="card"><div class="ic">📊</div>
+      <div class="feat">
         <h3 data-en>Latency testing</h3><h3 data-ru>Тест задержки</h3>
-        <p data-en>TCP-connect ping per server or group, with host-route bypass while TUN is active. Sort by ping, filter alive.</p>
-        <p data-ru>TCP-пинг по серверу или группе, с обходом маршрута при активном TUN. Сортировка по пингу, фильтр живых.</p>
+        <p data-en>TCP-connect ping per server or group, bypassing the tunnel while TUN is on. Sort by ping and hide dead servers.</p>
+        <p data-ru>TCP-пинг по серверу или группе в обход туннеля при включённом TUN. Сортировка по пингу и фильтр живых серверов.</p>
       </div>
-      <div class="card"><div class="ic">📱</div>
-        <h3 data-en>QR import & export</h3><h3 data-ru>QR-импорт и экспорт</h3>
-        <p data-en>Show any server as a QR code, save it as PNG, or add servers by scanning a QR with the camera or an image file.</p>
-        <p data-ru>Покажите любой сервер как QR-код, сохраните в PNG или добавьте серверы, отсканировав QR камерой либо из изображения.</p>
+      <div class="feat">
+        <h3 data-en>QR import and export</h3><h3 data-ru>QR-импорт и экспорт</h3>
+        <p data-en>Show any server as a QR code or save it as PNG. Add servers by scanning a QR with the camera or from an image.</p>
+        <p data-ru>Покажите любой сервер как QR-код или сохраните его в PNG. Добавляйте серверы, сканируя QR камерой или из картинки.</p>
       </div>
-      <div class="card"><div class="ic">🛡️</div>
-        <h3 data-en>Ad & tracker blocking</h3><h3 data-ru>Блокировка рекламы</h3>
-        <p data-en>One toggle drops ads and trackers via geosite:category-ads-all at the routing layer.</p>
-        <p data-ru>Один тумблер отбрасывает рекламу и трекеры через geosite:category-ads-all на уровне маршрутизации.</p>
+      <div class="feat">
+        <h3 data-en>Ad and tracker blocking</h3><h3 data-ru>Блокировка рекламы</h3>
+        <p data-en>One switch drops ads and trackers at the routing layer with geosite:category-ads-all.</p>
+        <p data-ru>Один переключатель отбрасывает рекламу и трекеры на уровне маршрутизации через geosite:category-ads-all.</p>
       </div>
-      <div class="card"><div class="ic">🌍</div>
+      <div class="feat">
+        <h3 data-en>Menu bar control</h3><h3 data-ru>Управление из меню-бара</h3>
+        <p data-en>Connect, disconnect and switch servers without opening the window. Close to tray and connect on launch.</p>
+        <p data-ru>Подключение, отключение и смена сервера без открытия окна. Сворачивание в трей и автоподключение при запуске.</p>
+      </div>
+      <div class="feat">
         <h3 data-en>12 languages</h3><h3 data-ru>12 языков</h3>
-        <p data-en>English, Русский, 中文, Español, हिन्दी, العربية, Français, Português, Deutsch, 日本語, Indonesia, Türkçe.</p>
-        <p data-ru>English, Русский, 中文, Español, हिन्दी, العربية, Français, Português, Deutsch, 日本語, Indonesia, Türkçe.</p>
+        <p>English, Русский, 中文, Español, हिन्दी, العربية, Français, Português, Deutsch, 日本語, Indonesia, Türkçe.</p>
       </div>
-      <div class="card"><div class="ic">🍃</div>
-        <h3 data-en>Menu-bar control</h3><h3 data-ru>Управление из меню-бара</h3>
-        <p data-en>Connect, disconnect and quick-switch servers without opening the window. Close-to-tray and auto-connect.</p>
-        <p data-ru>Подключение, отключение и быстрая смена серверов без окна. Сворачивание в трей и автоподключение.</p>
-      </div>
-      <div class="card"><div class="ic">♻️</div>
+      <div class="feat">
         <h3 data-en>Safe by default</h3><h3 data-ru>Безопасно по умолчанию</h3>
-        <p data-en>Restores routes and DNS on quit, and recovers a crashed session on launch — you're never left offline.</p>
-        <p data-ru>Восстанавливает маршруты и DNS при выходе и чинит упавшую сессию при запуске — вы не останетесь без сети.</p>
+        <p data-en>Routes and DNS are restored on quit, and a crashed session is recovered on the next launch, so you are never left offline.</p>
+        <p data-ru>Маршруты и DNS восстанавливаются при выходе, а упавшая сессия чинится при следующем запуске — без сети вы не останетесь.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section class="band">
-  <div class="wrap">
-    <h2 data-en>Pick how traffic flows</h2><h2 data-ru>Выберите, как идёт трафик</h2>
+<section class="sec">
+  <div class="wrap sec-grid">
+    <h2 class="sec-h"><span data-en>Tunnel modes</span><span data-ru>Режимы туннеля</span></h2>
     <div class="modes">
       <div class="mode">
+        <div class="big">Proxy</div>
         <span class="tag" data-en>No password</span><span class="tag" data-ru>Без пароля</span>
-        <h3 data-en>System Proxy</h3><h3 data-ru>Системный прокси</h3>
-        <p data-en style="color:var(--mut);font-size:14px">Sets the macOS SOCKS/HTTP proxy on the active network service.</p>
-        <p data-ru style="color:var(--mut);font-size:14px">Ставит системный SOCKS/HTTP-прокси на активном сетевом сервисе.</p>
+        <p data-en>Sets the macOS SOCKS and HTTP proxy on the active network service.</p>
+        <p data-ru>Включает системный SOCKS- и HTTP-прокси на активном сетевом сервисе.</p>
         <ul>
-          <li data-en>No admin rights required</li><li data-ru>Не требует прав администратора</li>
-          <li data-en>Great for browsers & proxy-aware apps</li><li data-ru>Идеально для браузеров и proxy-приложений</li>
-          <li data-en>Instant on / off</li><li data-ru>Мгновенное вкл/выкл</li>
+          <li data-en>No admin rights required</li><li data-ru>Права администратора не нужны</li>
+          <li data-en>For browsers and proxy-aware apps</li><li data-ru>Для браузеров и приложений, понимающих прокси</li>
+          <li data-en>Turns on and off instantly</li><li data-ru>Включается и выключается мгновенно</li>
         </ul>
       </div>
       <div class="mode">
+        <div class="big">TUN</div>
         <span class="tag" data-en>All apps</span><span class="tag" data-ru>Все приложения</span>
-        <h3 data-en>TUN</h3><h3 data-ru>TUN</h3>
-        <p data-en style="color:var(--mut);font-size:14px">Full-device tunnel via tun2socks with split-default routing.</p>
-        <p data-ru style="color:var(--mut);font-size:14px">Полный туннель через tun2socks со split-default маршрутами.</p>
+        <p data-en>A full-device tunnel through tun2socks with split-default routes.</p>
+        <p data-ru>Полный туннель для всего устройства через tun2socks со split-default маршрутами.</p>
         <ul>
-          <li data-en>Routes everything: Telegram, terminal, games, UDP</li><li data-ru>Маршрутизирует всё: Telegram, терминал, игры, UDP</li>
-          <li data-en>One-time helper install — then no more prompts</li><li data-ru>Хелпер ставится один раз — дальше без запросов</li>
-          <li data-en>Server IP pinned to the physical gateway</li><li data-ru>IP сервера закреплён за физическим шлюзом</li>
+          <li data-en>Routes everything: Telegram, terminal, games, UDP</li><li data-ru>Через него идёт всё: Telegram, терминал, игры, UDP</li>
+          <li data-en>The helper installs once, then no more prompts</li><li data-ru>Хелпер ставится один раз, дальше без запросов</li>
+          <li data-en>The server IP stays pinned to the physical gateway</li><li data-ru>IP сервера закреплён за физическим шлюзом</li>
         </ul>
       </div>
     </div>
   </div>
 </section>
 
-<section id="routing">
-  <div class="wrap">
-    <h2 data-en>Routing like the pros</h2><h2 data-ru>Маршрутизация как у профи</h2>
-    <p class="lead" data-en>Presets, downloadable geo databases, and a full ordered rule editor.</p>
-    <p class="lead" data-ru>Пресеты, загружаемые geo-базы и полный редактор правил с порядком.</p>
-    <div class="route-grid">
-      <ul class="route-list">
-        <li data-en><b>Presets:</b> Global, Bypass LAN, Bypass China, Bypass Russia, Custom.</li>
-        <li data-ru><b>Пресеты:</b> Global, Bypass LAN, Bypass China, Bypass Russia, Custom.</li>
-        <li data-en><b>Geo databases</b> from Loyalsoldier, runetfreedom, v2fly, or your own URL — downloaded straight from GitHub.</li>
-        <li data-ru><b>Geo-базы</b> от Loyalsoldier, runetfreedom, v2fly или свой URL — загрузка прямо с GitHub.</li>
-        <li data-en><b>Per-rule outbound</b> — proxy, direct or block — with domain, IP/CIDR, geosite, geoip and port matchers.</li>
-        <li data-ru><b>Направление на правило</b> — proxy, direct или block — с матчерами по домену, IP/CIDR, geosite, geoip и порту.</li>
-        <li data-en><b>Reorderable</b> — first match wins, just like v2rayN / Nekoray.</li>
-        <li data-ru><b>С порядком</b> — срабатывает первое совпадение, как в v2rayN / Nekoray.</li>
-      </ul>
-      <div class="codebox">
-<span class="c"># Bypass Russia preset</span><br>
-<span class="k">direct</span> ← geosite:category-gov-ru<br>
-<span class="k">direct</span> ← geosite:category-ru<br>
-<span class="k">direct</span> ← geoip:ru, geoip:private<br>
-<span class="k">block</span>&nbsp; ← geosite:category-ads-all<br>
-<span class="k">proxy</span>&nbsp; ← <span class="s">everything else</span><br>
+<section class="sec" id="routing">
+  <div class="wrap sec-grid">
+    <h2 class="sec-h"><span data-en>Routing</span><span data-ru>Маршрутизация</span></h2>
+    <div>
+      <p class="lead" data-en>Presets, downloadable geo databases and a full ordered rule editor.</p>
+      <p class="lead" data-ru>Пресеты, загружаемые geo-базы и полный редактор правил с порядком.</p>
+      <div class="route">
+        <ul>
+          <li data-en><b>Presets:</b> Global, Bypass LAN, Bypass China, Bypass Russia, Custom.</li>
+          <li data-ru><b>Пресеты:</b> Global, Bypass LAN, Bypass China, Bypass Russia, Custom.</li>
+          <li data-en><b>Geo databases</b> from Loyalsoldier, runetfreedom, v2fly or your own URL, downloaded straight from GitHub.</li>
+          <li data-ru><b>Geo-базы</b> от Loyalsoldier, runetfreedom, v2fly или по своему URL, загружаются прямо с GitHub.</li>
+          <li data-en><b>Per-rule outbound:</b> proxy, direct or block, matched by domain, IP/CIDR, geosite, geoip and port.</li>
+          <li data-ru><b>Направление для каждого правила:</b> proxy, direct или block, по домену, IP/CIDR, geosite, geoip и порту.</li>
+          <li data-en><b>Ordered:</b> the first match wins, as in v2rayN and Nekoray.</li>
+          <li data-ru><b>С порядком:</b> срабатывает первое совпадение, как в v2rayN и Nekoray.</li>
+        </ul>
+<div class="code" aria-label="Bypass Russia preset"><span class="c"># Bypass Russia preset</span>
+<span class="k">direct</span>  geosite:category-gov-ru
+<span class="k">direct</span>  geosite:category-ru
+<span class="k">direct</span>  geoip:ru, geoip:private
+<span class="k">block </span>  geosite:category-ads-all
+<span class="k">proxy </span>  everything else</div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="band">
-  <div class="wrap">
-    <h2 data-en>Up and running in a minute</h2><h2 data-ru>Запуск за минуту</h2>
-    <div class="steps">
-      <div class="step"><div class="n">01</div>
+<section class="sec">
+  <div class="wrap sec-grid">
+    <h2 class="sec-h"><span data-en>Getting started</span><span data-ru>Как начать</span></h2>
+    <ol class="steps">
+      <li>
         <h3 data-en>Add servers</h3><h3 data-ru>Добавьте серверы</h3>
-        <p data-en>Import a subscription URL or paste vless:// / vmess:// / trojan:// / ss:// / hysteria2:// / tuic:// / wireguard:// links — or scan a QR code.</p>
-        <p data-ru>Импортируйте подписку или вставьте ссылки vless:// / vmess:// / trojan:// / ss:// / hysteria2:// / tuic:// / wireguard:// — или отсканируйте QR-код.</p>
-      </div>
-      <div class="step"><div class="n">02</div>
+        <p data-en>Import a subscription URL, paste <code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hysteria2://</code>, <code>tuic://</code> or <code>wireguard://</code> links, or scan a QR code.</p>
+        <p data-ru>Импортируйте подписку, вставьте ссылки <code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hysteria2://</code>, <code>tuic://</code> или <code>wireguard://</code>, либо отсканируйте QR-код.</p>
+      </li>
+      <li>
         <h3 data-en>Pick a mode</h3><h3 data-ru>Выберите режим</h3>
         <p data-en>Proxy for browsers, or TUN for the whole device. TUN installs its helper once.</p>
         <p data-ru>Proxy для браузеров или TUN для всего устройства. TUN ставит хелпер один раз.</p>
-      </div>
-      <div class="step"><div class="n">03</div>
+      </li>
+      <li>
         <h3 data-en>Connect</h3><h3 data-ru>Подключитесь</h3>
-        <p data-en>Click a server. Switch any time from the window or the menu bar — instantly.</p>
-        <p data-ru>Нажмите сервер. Переключайтесь из окна или меню-бара в любой момент — мгновенно.</p>
+        <p data-en>Click a server. Switch at any time from the window or the menu bar.</p>
+        <p data-ru>Нажмите на сервер. Переключайтесь в любой момент из окна или меню-бара.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="sec" id="download">
+  <div class="wrap sec-grid">
+    <h2 class="sec-h"><span data-en>Download</span><span data-ru>Скачать</span></h2>
+    <div class="dl-body">
+      <p class="lead" data-en>Download the latest release, unzip it and move Veil.app to Applications.</p>
+      <p class="lead" data-ru>Скачайте последний релиз, распакуйте и перенесите Veil.app в «Программы».</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download Veil.app.zip</a>
+        <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать Veil.app.zip</a>
+        <a class="lnk" href="https://github.com/faustyu1/veil#build-from-source" data-en>Build from source</a>
+        <a class="lnk" href="https://github.com/faustyu1/veil#build-from-source" data-ru>Собрать из исходников</a>
       </div>
+      <dl class="specs">
+        <div><dt data-en>Requires</dt><dt data-ru>Система</dt><dd>macOS 14+</dd></div>
+        <div><dt data-en>Runs on</dt><dt data-ru>Процессор</dt><dd>Apple Silicon, Intel</dd></div>
+        <div><dt data-en>Signing</dt><dt data-ru>Подпись</dt><dd data-en>Ad-hoc</dd><dd data-ru>Ad-hoc</dd></div>
+        <div><dt data-en>License</dt><dt data-ru>Лицензия</dt><dd>AGPLv3</dd></div>
+      </dl>
+      <p class="note" data-en>On first launch, right-click the app and choose Open, or allow it in System Settings, Privacy &amp; Security.</p>
+      <p class="note" data-ru>При первом запуске нажмите на приложение правой кнопкой и выберите «Открыть», либо разрешите его в «Системные настройки», «Конфиденциальность и безопасность».</p>
     </div>
   </div>
 </section>
 
-<section id="download" class="dl">
-  <div class="wrap">
-    <h2 data-en>Get Veil</h2><h2 data-ru>Скачать Veil</h2>
-    <div class="box">
-      <p class="lead" style="margin-top:0" data-en>Download the latest release, unzip, and move Veil.app to Applications.</p>
-      <p class="lead" style="margin-top:0" data-ru>Скачайте последний релиз, распакуйте и переместите Veil.app в «Программы».</p>
-      <div class="cta">
-        <a class="btn btn-p" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download Veil.app.zip</a>
-        <a class="btn btn-p" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать Veil.app.zip</a>
-        <a class="btn btn-s" href="https://github.com/faustyu1/veil#build-from-source" data-en>Build from source</a>
-        <a class="btn btn-s" href="https://github.com/faustyu1/veil#build-from-source" data-ru>Собрать из исходников</a>
+<section class="sec" id="support">
+  <div class="wrap sec-grid">
+    <h2 class="sec-h"><span data-en>Support the iOS build</span><span data-ru>Поддержать iOS-сборку</span></h2>
+    <div class="sup-body">
+      <p class="lead" data-en>The iPhone app is written and builds today. iOS just won’t run it without a $99 Apple membership.</p>
+      <p class="lead" data-ru>Приложение для iPhone уже написано и собирается. iOS не запустит его без членства Apple за $99.</p>
+      <p data-en>A VPN tunnel on iOS needs the Network Extension entitlement, and Apple only issues it with a paid Developer Program membership ($99&nbsp;a&nbsp;year). Raising that is the only thing between the code and a build you can install.</p>
+      <p data-ru>VPN-туннелю на iOS нужно разрешение Network Extension, а Apple выдаёт его только с платным членством в Developer Program ($99&nbsp;в&nbsp;год). Собрать эту сумму — единственное, что отделяет код от сборки, которую можно поставить.</p>
+      <div class="addr">
+        <span class="chain">TON</span>
+        <code id="ton">UQDsbwQEaspICRDSW4oSNmL0PXxDlnfkiMuqoUbK7ufiCVXj</code>
+        <button class="lnk" onclick="copyTon(this)" data-en>Copy</button>
+        <button class="lnk" onclick="copyTon(this)" data-ru>Копировать</button>
       </div>
-      <div class="pills">
-        <span class="pill" data-en>macOS 14+</span><span class="pill" data-ru>macOS 14+</span>
-        <span class="pill">Apple Silicon · Intel</span>
-        <span class="pill" data-en>Ad-hoc signed</span><span class="pill" data-ru>Ad-hoc подпись</span>
-        <span class="pill">AGPLv3</span>
+      <div class="actions">
+        <a class="btn" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-en>Donate in RUB with CloudTips</a>
+        <a class="btn" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-ru>Поддержать в рублях через CloudTips</a>
       </div>
-      <p class="meta" style="margin-top:18px" data-en>First launch: right-click → Open, or allow under System Settings → Privacy &amp; Security.</p>
-      <p class="meta" style="margin-top:18px" data-ru>Первый запуск: правый клик → «Открыть», либо разрешите в «Системные настройки → Конфиденциальность и безопасность».</p>
-    </div>
-  </div>
-</section>
-
-<section id="support" class="dl">
-  <div class="wrap">
-    <h2 data-en>Support the iOS build</h2><h2 data-ru>Поддержать iOS-сборку</h2>
-    <div class="box">
-      <p class="lead" style="margin-top:0" data-en>The iPhone app is written and builds today, but iOS will not run a VPN tunnel without the Network Extension entitlement — and Apple only issues that with a paid Developer Program membership ($99&nbsp;a&nbsp;year). Raising it is the only thing standing between the code and a build you can install.</p>
-      <p class="lead" style="margin-top:0" data-ru>Приложение для iPhone уже написано и собирается, но iOS не запустит VPN-туннель без разрешения Network Extension — а его Apple выдаёт только с платным членством в Developer Program ($99&nbsp;в&nbsp;год). Собрать эту сумму — единственное, что отделяет код от сборки, которую можно поставить.</p>
-
-      <div class="donate">
-        <div class="addr">
-          <span class="chain">TON</span>
-          <code id="ton">UQDsbwQEaspICRDSW4oSNmL0PXxDlnfkiMuqoUbK7ufiCVXj</code>
-          <button class="btn btn-s" onclick="copyTon(this)" data-en>Copy</button>
-          <button class="btn btn-s" onclick="copyTon(this)" data-ru>Копировать</button>
-        </div>
-        <div class="cta" style="margin-top:0">
-          <a class="btn btn-p" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-en>Donate in RUB — CloudTips</a>
-          <a class="btn btn-p" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-ru>Поддержать в рублях — CloudTips</a>
-        </div>
-      </div>
-
-      <p class="meta" data-en>Nothing in Veil is paywalled and the licence stays AGPLv3 either way. The membership only buys the ability to ship a build that iOS will actually run.</p>
-      <p class="meta" data-ru>Ничего в Veil не закрыто платно, и лицензия в любом случае остаётся AGPLv3. Членство покупает только возможность выпустить сборку, которую iOS реально запустит.</p>
+      <p class="note" data-en>Nothing in Veil is paywalled, and the licence stays AGPLv3 either way. The membership only buys the ability to ship a build iOS will actually run.</p>
+      <p class="note" data-ru>Ничего в Veil не закрыто платно, и лицензия в любом случае остаётся AGPLv3. Членство нужно только для того, чтобы выпустить сборку, которую iOS реально запустит.</p>
     </div>
   </div>
 </section>
 
 <footer>
-  <div class="wrap">
-    <p>Veil · <a href="https://github.com/faustyu1/veil">GitHub</a> · <a href="https://github.com/faustyu1/veil/releases">Releases</a> · AGPLv3 License</p>
-    <p style="margin-top:8px" data-en>Powered by <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> and <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
-    <p style="margin-top:8px" data-ru>На базе <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> и <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
-    <p class="disc" data-en>Veil is a client for proxy protocols intended for privacy, development and lawful circumvention of censorship. You are responsible for complying with the laws and terms of service that apply to you.</p>
-    <p class="disc" data-ru>Veil — клиент для прокси-протоколов, предназначенный для приватности, разработки и законного обхода цензуры. Вы несёте ответственность за соблюдение применимых к вам законов и условий использования.</p>
+  <div class="wrap foot">
+    <div class="brand">Veil</div>
+    <div>
+      <div class="links">
+        <a href="https://github.com/faustyu1/veil">GitHub</a>
+        <a href="https://github.com/faustyu1/veil/releases" data-en>Releases</a><a href="https://github.com/faustyu1/veil/releases" data-ru>Релизы</a>
+        <a href="https://github.com/faustyu1/veil/blob/main/LICENSE" data-en>AGPLv3 license</a><a href="https://github.com/faustyu1/veil/blob/main/LICENSE" data-ru>Лицензия AGPLv3</a>
+      </div>
+      <p class="credit" data-en>Powered by <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> and <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
+      <p class="credit" data-ru>Работает на <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> и <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
+      <p class="disc" data-en>Veil is a client for proxy protocols intended for privacy, development and lawful circumvention of censorship. You are responsible for complying with the laws and terms of service that apply to you.</p>
+      <p class="disc" data-ru>Veil — клиент для прокси-протоколов, предназначенный для приватности, разработки и законного обхода цензуры. Вы несёте ответственность за соблюдение применимых к вам законов и условий использования.</p>
+    </div>
   </div>
 </footer>
 
@@ -406,18 +450,55 @@
     sel.addRange(range);
   }
 
-  function setLang(l){
-    l = (l === 'ru') ? 'ru' : 'en';
+  function applyLang(l){
     document.documentElement.lang = l;
     document.body.classList.remove('lang-en','lang-ru');
     document.body.classList.add('lang-' + l);
     document.getElementById('b-en').classList.toggle('on', l==='en');
     document.getElementById('b-ru').classList.toggle('on', l==='ru');
-    try{ localStorage.setItem('veil-lang', l); }catch(e){}
   }
+  function setLang(l){
+    l = (l === 'ru') ? 'ru' : 'en';
+    try{ localStorage.setItem('veil-lang', l); }catch(e){}
+    if (l === document.documentElement.lang) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { applyLang(l); return; }
+    if (document.startViewTransition) {
+      document.startViewTransition(function(){ applyLang(l); });
+      return;
+    }
+    // No View Transitions: fade out, swap the text, fade back in.
+    document.body.classList.add('lang-fading');
+    setTimeout(function(){
+      applyLang(l);
+      requestAnimationFrame(function(){ document.body.classList.remove('lang-fading'); });
+    }, 160);
+  }
+  // Size the wordmark from its measured width, so it spans the column exactly
+  // whatever font, zoom level or screen the visitor has.
+  function fitWord(){
+    var word = document.querySelector('.word');
+    var text = word.firstElementChild;
+    var avail = word.clientWidth;
+    word.style.fontSize = '100px';
+    var w = text.getBoundingClientRect().width;
+    if (w > 0 && avail > 0) word.style.fontSize = (100 * avail / w) + 'px';
+    else word.style.fontSize = '';
+  }
+  fitWord();
+  if (document.fonts) {
+    document.fonts.ready.then(fitWord);
+    document.fonts.addEventListener && document.fonts.addEventListener('loadingdone', fitWord);
+  }
+  // Refit only when the width changes; fitting itself changes the height.
+  var lastWidth = 0;
+  window.addEventListener('resize', function(){
+    var w = document.querySelector('.word').clientWidth;
+    if (w !== lastWidth) { lastWidth = w; fitWord(); }
+  });
+
   var saved = 'en';
   try{ saved = localStorage.getItem('veil-lang') || (navigator.language||'').slice(0,2); }catch(e){}
-  setLang(saved === 'ru' ? 'ru' : 'en');
+  applyLang(saved === 'ru' ? 'ru' : 'en');
 </script>
 </body>
 </html>
