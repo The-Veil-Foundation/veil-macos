@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Veil — Native macOS VPN client for Xray-core</title>
-<meta name="description" content="Veil is a native macOS VPN client for the Xray-core and sing-box proxy engines. VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, AnyTLS, Reality. System Proxy & TUN modes, subscriptions, QR import, professional routing.">
+<title>Veil — VPN client for Mac</title>
+<meta name="description" content="Veil is a free VPN client for Mac. Add your subscription, pick a server and connect. Works with VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard and AnyTLS.">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="color-scheme" content="dark light">
@@ -73,9 +73,9 @@
   .hero-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:48px clamp(32px,5vw,80px);align-items:end}
   .hero h1{font-weight:500;font-size:clamp(34px,4.6vw,64px);line-height:1.04;letter-spacing:-.03em;max-width:15ch;text-wrap:balance}
   .hero-side{display:grid;gap:26px;max-width:460px}
-  .engines{display:grid;grid-template-columns:1fr 1fr;gap:24px;font-size:15px}
-  .engines dt{color:var(--dim);font-size:13px;margin-bottom:6px}
-  .engines dd{line-height:1.7}
+  .engines{display:grid;gap:6px;font-size:15px}
+  .eng-h{color:var(--dim);font-size:13px}
+  .engines ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(4,auto);grid-auto-flow:column;gap:0 24px;line-height:1.7}
   .hero-side p{color:var(--dim)}
   .hero .meta{color:var(--faint);font-size:13px}
   .word{
@@ -182,7 +182,7 @@
     <a class="brand" href="#top">Veil</a>
     <div class="nav-links">
       <a href="#features" class="hide-sm" data-en>Features</a><a href="#features" class="hide-sm" data-ru>Возможности</a>
-      <a href="#routing" class="hide-sm" data-en>Routing</a><a href="#routing" class="hide-sm" data-ru>Маршрутизация</a>
+      <a href="#routing" class="hide-sm" data-en>Rules</a><a href="#routing" class="hide-sm" data-ru>Правила</a>
       <a href="#download" data-en>Download</a><a href="#download" data-ru>Скачать</a>
       <a href="#support" class="hide-sm" data-en>Support</a><a href="#support" class="hide-sm" data-ru>Поддержать</a>
       <div class="lang" role="group" aria-label="Language">
@@ -196,22 +196,25 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div class="hero-grid">
-      <h1 data-en>A quiet VPN client for macOS, built on Xray and sing-box.</h1>
-      <h1 data-ru>Тихий <span style="white-space:nowrap">VPN-клиент</span> для macOS на&nbsp;Xray и&nbsp;sing-box.</h1>
+      <h1 data-en>A VPN client for Mac. Add your subscription and connect.</h1>
+      <h1 data-ru>VPN-клиент для Mac. Добавьте подписку и&nbsp;подключайтесь.</h1>
       <div class="hero-side">
-        <dl class="engines">
-          <div><dt>Xray-core</dt><dd>VLESS<br>VMess<br>Trojan<br>Shadowsocks</dd></div>
-          <div><dt>sing-box</dt><dd>Hysteria2<br>TUIC<br>WireGuard<br>AnyTLS</dd></div>
-        </dl>
-        <p data-en>System proxy or a full-device TUN tunnel, subscription profiles and rule-based routing, all from the menu bar.</p>
-        <p data-ru>Системный прокси или полный TUN-туннель, профили подписок и маршрутизация по правилам — всё из меню-бара.</p>
+        <div class="engines">
+          <span class="eng-h" data-en>Works with</span><span class="eng-h" data-ru>Подходит для</span>
+          <ul>
+            <li>VLESS</li><li>VMess</li><li>Trojan</li><li>Shadowsocks</li>
+            <li>Hysteria2</li><li>TUIC</li><li>WireGuard</li><li>AnyTLS</li>
+          </ul>
+        </div>
+        <p data-en>Lives in the menu bar. Send just your browser through the VPN, or every app on your Mac.</p>
+        <p data-ru>Живёт в меню-баре. Через VPN можно пустить только браузер или сразу все приложения.</p>
         <div class="actions">
-          <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download for macOS</a>
-          <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать для macOS</a>
+          <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download for Mac</a>
+          <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать для Mac</a>
           <a class="lnk" href="https://github.com/faustyu1/veil">GitHub</a>
         </div>
-        <p class="meta" data-en>Free and open source. macOS 14 or later, Apple Silicon and Intel.</p>
-        <p class="meta" data-ru>Бесплатно, с открытым кодом. macOS 14 и новее, Apple Silicon и Intel.</p>
+        <p class="meta" data-en>Free and open source. macOS 14 or later.</p>
+        <p class="meta" data-ru>Бесплатно, с открытым кодом. macOS 14 и новее.</p>
       </div>
     </div>
     <span class="word" aria-hidden="true"><span>Veil</span></span>
@@ -220,61 +223,60 @@
 
 <section class="sec" id="features">
   <div class="wrap sec-grid">
-    <h2 class="sec-h"><span data-en>Features</span><span data-ru>Возможности</span></h2>
+    <h2 class="sec-h"><span data-en>What it does</span><span data-ru>Что умеет</span></h2>
     <div class="feats">
       <div class="feat wide">
-        <h3 data-en>Modern protocols</h3><h3 data-ru>Современные протоколы</h3>
-        <p data-en>VLESS, VMess, Trojan and Shadowsocks with Reality and TLS over tcp, ws, grpc, http and xhttp, including xtls-rprx-vision and post-quantum encryption. Hysteria2, TUIC, WireGuard and AnyTLS run on a bundled sing-box core.</p>
-        <p data-ru>VLESS, VMess, Trojan и Shadowsocks с Reality и TLS поверх tcp, ws, grpc, http и xhttp, включая xtls-rprx-vision и постквантовое шифрование. Hysteria2, TUIC, WireGuard и AnyTLS работают на встроенном ядре sing-box.</p>
+        <p data-en>Add the subscription from your VPN provider, pick a server and click it. Veil handles the rest.</p>
+        <p data-ru>Добавьте подписку от своего VPN-провайдера, выберите сервер и нажмите на него. Остальное Veil сделает сам.</p>
       </div>
       <div class="feat">
-        <h3 data-en>Two tunnel modes</h3><h3 data-ru>Два режима туннеля</h3>
-        <p data-en>System proxy for browsers, or a full-device TUN that routes every app: Telegram, the terminal, games, UDP.</p>
-        <p data-ru>Системный прокси для браузеров или полный TUN для всех приложений: Telegram, терминал, игры, UDP.</p>
+        <h3 data-en>Browser or the whole Mac</h3><h3 data-ru>Браузер или весь Mac</h3>
+        <p data-en>Proxy mode covers your browser. TUN mode covers every app, including Telegram and games.</p>
+        <p data-ru>В режиме прокси через VPN идёт браузер. В режиме TUN идут все приложения, включая Telegram и игры.</p>
       </div>
       <div class="feat">
         <h3 data-en>Subscriptions</h3><h3 data-ru>Подписки</h3>
-        <p data-en>Import subscription URLs as profile groups. Traffic, expiry and description come from standard headers, and profiles update themselves.</p>
-        <p data-ru>Подписки импортируются как группы профилей. Трафик, срок и описание берутся из стандартных заголовков, профили обновляются сами.</p>
+        <p data-en>Paste a subscription link and the servers appear and stay up to date. You can see how much traffic is left and when it runs out.</p>
+        <p data-ru>Вставьте ссылку на подписку, и серверы появятся сами и будут обновляться. Видно, сколько осталось трафика и до какого числа она действует.</p>
       </div>
       <div class="feat">
-        <h3 data-en>Professional routing</h3><h3 data-ru>Профессиональная маршрутизация</h3>
-        <p data-en>Presets and a full rule editor with geosite and geoip databases downloaded from GitHub, in the style of v2rayN.</p>
-        <p data-ru>Пресеты и полный редактор правил с базами geosite и geoip, загружаемыми с GitHub, как в v2rayN.</p>
+        <h3 data-en>Choose what goes through the VPN</h3><h3 data-ru>Что идёт через VPN</h3>
+        <p data-en>Send some sites through the VPN and others directly. There are ready-made sets, such as opening Russian sites without the VPN.</p>
+        <p data-ru>Одни сайты можно пускать через VPN, другие напрямую. Есть готовые наборы, например «российские сайты без VPN».</p>
       </div>
       <div class="feat">
-        <h3 data-en>Instant switching</h3><h3 data-ru>Мгновенное переключение</h3>
-        <p data-en>Changing servers keeps the transport up and re-pins the route. It takes under a second and never asks for a password.</p>
-        <p data-ru>При смене сервера транспорт остаётся поднятым, меняется только маршрут. Меньше секунды и без запроса пароля.</p>
+        <h3 data-en>Quick server switch</h3><h3 data-ru>Быстрая смена сервера</h3>
+        <p data-en>Switching servers takes about a second, and you don't type your password again.</p>
+        <p data-ru>Сервер меняется примерно за секунду, пароль вводить заново не нужно.</p>
       </div>
       <div class="feat">
-        <h3 data-en>Latency testing</h3><h3 data-ru>Тест задержки</h3>
-        <p data-en>TCP-connect ping per server or group, bypassing the tunnel while TUN is on. Sort by ping and hide dead servers.</p>
-        <p data-ru>TCP-пинг по серверу или группе в обход туннеля при включённом TUN. Сортировка по пингу и фильтр живых серверов.</p>
+        <h3 data-en>Find the fastest server</h3><h3 data-ru>Самый быстрый сервер</h3>
+        <p data-en>Check the ping of every server with one click and sort them from fastest to slowest.</p>
+        <p data-ru>Проверьте пинг всех серверов одной кнопкой и отсортируйте их от быстрых к медленным.</p>
       </div>
       <div class="feat">
-        <h3 data-en>QR import and export</h3><h3 data-ru>QR-импорт и экспорт</h3>
-        <p data-en>Show any server as a QR code or save it as PNG. Add servers by scanning a QR with the camera or from an image.</p>
-        <p data-ru>Покажите любой сервер как QR-код или сохраните его в PNG. Добавляйте серверы, сканируя QR камерой или из картинки.</p>
+        <h3 data-en>QR codes</h3><h3 data-ru>QR-коды</h3>
+        <p data-en>Add a server by scanning a QR code with the camera or from a picture. Share your own servers the same way.</p>
+        <p data-ru>Добавьте сервер, отсканировав QR-код камерой или с картинки. Своими серверами можно делиться так же.</p>
       </div>
       <div class="feat">
-        <h3 data-en>Ad and tracker blocking</h3><h3 data-ru>Блокировка рекламы</h3>
-        <p data-en>One switch drops ads and trackers at the routing layer with geosite:category-ads-all.</p>
-        <p data-ru>Один переключатель отбрасывает рекламу и трекеры на уровне маршрутизации через geosite:category-ads-all.</p>
+        <h3 data-en>No ads</h3><h3 data-ru>Без рекламы</h3>
+        <p data-en>One switch blocks ads and trackers on every site.</p>
+        <p data-ru>Один переключатель убирает рекламу и трекеры на всех сайтах.</p>
       </div>
       <div class="feat">
-        <h3 data-en>Menu bar control</h3><h3 data-ru>Управление из меню-бара</h3>
-        <p data-en>Connect, disconnect and switch servers without opening the window. Close to tray and connect on launch.</p>
-        <p data-ru>Подключение, отключение и смена сервера без открытия окна. Сворачивание в трей и автоподключение при запуске.</p>
+        <h3 data-en>From the menu bar</h3><h3 data-ru>Из меню-бара</h3>
+        <p data-en>Connect, disconnect and change servers without opening the window. Veil can also connect by itself when your Mac starts.</p>
+        <p data-ru>Подключайтесь, отключайтесь и меняйте сервер, не открывая окно. Veil может и сам подключаться при включении Mac.</p>
       </div>
       <div class="feat">
         <h3 data-en>12 languages</h3><h3 data-ru>12 языков</h3>
         <p>English, Русский, 中文, Español, हिन्दी, العربية, Français, Português, Deutsch, 日本語, Indonesia, Türkçe.</p>
       </div>
       <div class="feat">
-        <h3 data-en>Safe by default</h3><h3 data-ru>Безопасно по умолчанию</h3>
-        <p data-en>Routes and DNS are restored on quit, and a crashed session is recovered on the next launch, so you are never left offline.</p>
-        <p data-ru>Маршруты и DNS восстанавливаются при выходе, а упавшая сессия чинится при следующем запуске — без сети вы не останетесь.</p>
+        <h3 data-en>Your internet keeps working</h3><h3 data-ru>Интернет не пропадёт</h3>
+        <p data-en>If Veil quits or crashes, it puts your Mac's network settings back the way they were.</p>
+        <p data-ru>Если Veil закроется или упадёт, он сам вернёт сетевые настройки Mac как были.</p>
       </div>
     </div>
   </div>
@@ -282,28 +284,28 @@
 
 <section class="sec">
   <div class="wrap sec-grid">
-    <h2 class="sec-h"><span data-en>Tunnel modes</span><span data-ru>Режимы туннеля</span></h2>
+    <h2 class="sec-h"><span data-en>Two modes</span><span data-ru>Два режима</span></h2>
     <div class="modes">
       <div class="mode">
         <div class="big">Proxy</div>
-        <span class="tag" data-en>No password</span><span class="tag" data-ru>Без пароля</span>
-        <p data-en>Sets the macOS SOCKS and HTTP proxy on the active network service.</p>
-        <p data-ru>Включает системный SOCKS- и HTTP-прокси на активном сетевом сервисе.</p>
+        <span class="tag" data-en>Browser</span><span class="tag" data-ru>Браузер</span>
+        <p data-en>Your browser and apps that support a proxy go through the VPN.</p>
+        <p data-ru>Через VPN идут браузер и программы, которые умеют работать с прокси.</p>
         <ul>
-          <li data-en>No admin rights required</li><li data-ru>Права администратора не нужны</li>
-          <li data-en>For browsers and proxy-aware apps</li><li data-ru>Для браузеров и приложений, понимающих прокси</li>
+          <li data-en>No admin password needed</li><li data-ru>Пароль администратора не нужен</li>
           <li data-en>Turns on and off instantly</li><li data-ru>Включается и выключается мгновенно</li>
+          <li data-en>Telegram and games don't go through it</li><li data-ru>Telegram и игры идут мимо VPN</li>
         </ul>
       </div>
       <div class="mode">
         <div class="big">TUN</div>
-        <span class="tag" data-en>All apps</span><span class="tag" data-ru>Все приложения</span>
-        <p data-en>A full-device tunnel through tun2socks with split-default routes.</p>
-        <p data-ru>Полный туннель для всего устройства через tun2socks со split-default маршрутами.</p>
+        <span class="tag" data-en>Whole Mac</span><span class="tag" data-ru>Весь Mac</span>
+        <p data-en>Everything on your Mac goes through the VPN: Telegram, the terminal, games.</p>
+        <p data-ru>Через VPN идёт всё на Mac: Telegram, терминал, игры.</p>
         <ul>
-          <li data-en>Routes everything: Telegram, terminal, games, UDP</li><li data-ru>Через него идёт всё: Telegram, терминал, игры, UDP</li>
-          <li data-en>The helper installs once, then no more prompts</li><li data-ru>Хелпер ставится один раз, дальше без запросов</li>
-          <li data-en>The server IP stays pinned to the physical gateway</li><li data-ru>IP сервера закреплён за физическим шлюзом</li>
+          <li data-en>Works for every app</li><li data-ru>Работает для всех приложений</li>
+          <li data-en>Calls and online games go through it too</li><li data-ru>Звонки и онлайн-игры тоже идут через VPN</li>
+          <li data-en>Asks for the admin password once, the first time</li><li data-ru>Пароль администратора нужен один раз, при первом включении</li>
         </ul>
       </div>
     </div>
@@ -312,27 +314,27 @@
 
 <section class="sec" id="routing">
   <div class="wrap sec-grid">
-    <h2 class="sec-h"><span data-en>Routing</span><span data-ru>Маршрутизация</span></h2>
+    <h2 class="sec-h"><span data-en>Rules</span><span data-ru>Правила</span></h2>
     <div>
-      <p class="lead" data-en>Presets, downloadable geo databases and a full ordered rule editor.</p>
-      <p class="lead" data-ru>Пресеты, загружаемые geo-базы и полный редактор правил с порядком.</p>
+      <p class="lead" data-en>You decide which sites go through the VPN and which go directly.</p>
+      <p class="lead" data-ru>Вы решаете, какие сайты идут через VPN, а какие напрямую.</p>
       <div class="route">
         <ul>
-          <li data-en><b>Presets:</b> Global, Bypass LAN, Bypass China, Bypass Russia, Custom.</li>
-          <li data-ru><b>Пресеты:</b> Global, Bypass LAN, Bypass China, Bypass Russia, Custom.</li>
-          <li data-en><b>Geo databases</b> from Loyalsoldier, runetfreedom, v2fly or your own URL, downloaded straight from GitHub.</li>
-          <li data-ru><b>Geo-базы</b> от Loyalsoldier, runetfreedom, v2fly или по своему URL, загружаются прямо с GitHub.</li>
-          <li data-en><b>Per-rule outbound:</b> proxy, direct or block, matched by domain, IP/CIDR, geosite, geoip and port.</li>
-          <li data-ru><b>Направление для каждого правила:</b> proxy, direct или block, по домену, IP/CIDR, geosite, geoip и порту.</li>
-          <li data-en><b>Ordered:</b> the first match wins, as in v2rayN and Nekoray.</li>
-          <li data-ru><b>С порядком:</b> срабатывает первое совпадение, как в v2rayN и Nekoray.</li>
+          <li data-en><b>Ready-made sets:</b> everything through the VPN, everything except your home network, everything except Russian or Chinese sites.</li>
+          <li data-ru><b>Готовые наборы:</b> всё через VPN, всё кроме домашней сети, всё кроме российских или китайских сайтов.</li>
+          <li data-en><b>Your own rules</b> by site, IP address or country.</li>
+          <li data-ru><b>Свои правила</b> по сайту, IP-адресу или стране.</li>
+          <li data-en><b>For each rule</b> choose: through the VPN, directly, or blocked.</li>
+          <li data-ru><b>Для каждого правила</b> выберите: через VPN, напрямую или заблокировать.</li>
+          <li data-en><b>Order matters:</b> rules are checked from top to bottom, and the first one that fits wins.</li>
+          <li data-ru><b>Порядок важен:</b> правила проверяются сверху вниз, срабатывает первое подходящее.</li>
         </ul>
-<div class="code" aria-label="Bypass Russia preset"><span class="c"># Bypass Russia preset</span>
+<div class="code" aria-label="Example: Russian sites without the VPN"><span class="c" data-en># Example: Russian sites without the VPN</span><span class="c" data-ru># Пример: российские сайты без VPN</span>
 <span class="k">direct</span>  geosite:category-gov-ru
 <span class="k">direct</span>  geosite:category-ru
 <span class="k">direct</span>  geoip:ru, geoip:private
 <span class="k">block </span>  geosite:category-ads-all
-<span class="k">proxy </span>  everything else</div>
+<span class="k">proxy </span>  <span data-en>everything else</span><span data-ru>всё остальное</span></div>
       </div>
     </div>
   </div>
@@ -344,18 +346,18 @@
     <ol class="steps">
       <li>
         <h3 data-en>Add servers</h3><h3 data-ru>Добавьте серверы</h3>
-        <p data-en>Import a subscription URL, paste <code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hysteria2://</code>, <code>tuic://</code> or <code>wireguard://</code> links, or scan a QR code.</p>
-        <p data-ru>Импортируйте подписку, вставьте ссылки <code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hysteria2://</code>, <code>tuic://</code> или <code>wireguard://</code>, либо отсканируйте QR-код.</p>
+        <p data-en>Paste your subscription link or a server link, such as <code>vless://</code>, or scan a QR code.</p>
+        <p data-ru>Вставьте ссылку на подписку или на сервер, например <code>vless://</code>, либо отсканируйте QR-код.</p>
       </li>
       <li>
         <h3 data-en>Pick a mode</h3><h3 data-ru>Выберите режим</h3>
-        <p data-en>Proxy for browsers, or TUN for the whole device. TUN installs its helper once.</p>
-        <p data-ru>Proxy для браузеров или TUN для всего устройства. TUN ставит хелпер один раз.</p>
+        <p data-en>Proxy for the browser, TUN for the whole Mac.</p>
+        <p data-ru>Прокси для браузера, TUN для всего Mac.</p>
       </li>
       <li>
         <h3 data-en>Connect</h3><h3 data-ru>Подключитесь</h3>
-        <p data-en>Click a server. Switch at any time from the window or the menu bar.</p>
-        <p data-ru>Нажмите на сервер. Переключайтесь в любой момент из окна или меню-бара.</p>
+        <p data-en>Click a server. You can change it at any time from the window or the menu bar.</p>
+        <p data-ru>Нажмите на сервер. Сменить его можно в любой момент из окна или меню-бара.</p>
       </li>
     </ol>
   </div>
@@ -365,34 +367,34 @@
   <div class="wrap sec-grid">
     <h2 class="sec-h"><span data-en>Download</span><span data-ru>Скачать</span></h2>
     <div class="dl-body">
-      <p class="lead" data-en>Download the latest release, unzip it and move Veil.app to Applications.</p>
-      <p class="lead" data-ru>Скачайте последний релиз, распакуйте и перенесите Veil.app в «Программы».</p>
+      <p class="lead" data-en>Download the archive, open it and move Veil to Applications.</p>
+      <p class="lead" data-ru>Скачайте архив, откройте его и перенесите Veil в «Программы».</p>
       <div class="actions">
-        <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download Veil.app.zip</a>
-        <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать Veil.app.zip</a>
+        <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-en>Download Veil</a>
+        <a class="btn" href="https://github.com/faustyu1/veil/releases/latest/download/Veil.app.zip" data-ru>Скачать Veil</a>
         <a class="lnk" href="https://github.com/faustyu1/veil#build-from-source" data-en>Build from source</a>
         <a class="lnk" href="https://github.com/faustyu1/veil#build-from-source" data-ru>Собрать из исходников</a>
       </div>
       <dl class="specs">
-        <div><dt data-en>Requires</dt><dt data-ru>Система</dt><dd>macOS 14+</dd></div>
-        <div><dt data-en>Runs on</dt><dt data-ru>Процессор</dt><dd>Apple Silicon, Intel</dd></div>
-        <div><dt data-en>Signing</dt><dt data-ru>Подпись</dt><dd data-en>Ad-hoc</dd><dd data-ru>Ad-hoc</dd></div>
-        <div><dt data-en>License</dt><dt data-ru>Лицензия</dt><dd>AGPLv3</dd></div>
+        <div><dt data-en>System</dt><dt data-ru>Система</dt><dd data-en>macOS 14 or later</dd><dd data-ru>macOS 14 и новее</dd></div>
+        <div><dt data-en>Mac</dt><dt data-ru>Mac</dt><dd data-en>Apple Silicon and Intel</dd><dd data-ru>Apple Silicon и Intel</dd></div>
+        <div><dt data-en>Price</dt><dt data-ru>Цена</dt><dd data-en>Free</dd><dd data-ru>Бесплатно</dd></div>
+        <div><dt data-en>Code</dt><dt data-ru>Код</dt><dd data-en>Open, AGPLv3</dd><dd data-ru>Открытый, AGPLv3</dd></div>
       </dl>
-      <p class="note" data-en>On first launch, right-click the app and choose Open, or allow it in System Settings, Privacy &amp; Security.</p>
-      <p class="note" data-ru>При первом запуске нажмите на приложение правой кнопкой и выберите «Открыть», либо разрешите его в «Системные настройки», «Конфиденциальность и безопасность».</p>
+      <p class="note" data-en>Veil isn't from the App Store, so the first time macOS may refuse to open it. Right-click Veil and choose Open, or allow it in System Settings, Privacy &amp; Security.</p>
+      <p class="note" data-ru>Veil не из App Store, поэтому в первый раз macOS может его не открыть. Нажмите на Veil правой кнопкой и выберите «Открыть» или разрешите запуск в «Системные настройки», «Конфиденциальность и безопасность».</p>
     </div>
   </div>
 </section>
 
 <section class="sec" id="support">
   <div class="wrap sec-grid">
-    <h2 class="sec-h"><span data-en>Support the iOS build</span><span data-ru>Поддержать iOS-сборку</span></h2>
+    <h2 class="sec-h"><span data-en>Help with the iPhone app</span><span data-ru>Помочь с версией для iPhone</span></h2>
     <div class="sup-body">
-      <p class="lead" data-en>The iPhone app is written and builds today. iOS just won’t run it without a $99 Apple membership.</p>
-      <p class="lead" data-ru>Приложение для iPhone уже написано и собирается. iOS не запустит его без членства Apple за $99.</p>
-      <p data-en>A VPN tunnel on iOS needs the Network Extension entitlement, and Apple only issues it with a paid Developer Program membership ($99&nbsp;a&nbsp;year). Raising that is the only thing between the code and a build you can install.</p>
-      <p data-ru>VPN-туннелю на iOS нужно разрешение Network Extension, а Apple выдаёт его только с платным членством в Developer Program ($99&nbsp;в&nbsp;год). Собрать эту сумму — единственное, что отделяет код от сборки, которую можно поставить.</p>
+      <p class="lead" data-en>The iPhone version is ready. Releasing it takes an Apple developer account, which costs $99 a year.</p>
+      <p class="lead" data-ru>Версия для iPhone готова. Чтобы её выпустить, нужен аккаунт разработчика Apple, а он стоит $99 в год.</p>
+      <p data-en>Without that account, iOS won't let an app turn on a VPN. If you'd like to help cover it, you can send any amount below.</p>
+      <p data-ru>Без такого аккаунта iOS не разрешает приложению включать VPN. Если хотите помочь его оплатить, можно отправить любую сумму ниже.</p>
       <div class="addr">
         <span class="chain">TON</span>
         <code id="ton">UQDsbwQEaspICRDSW4oSNmL0PXxDlnfkiMuqoUbK7ufiCVXj</code>
@@ -400,11 +402,11 @@
         <button class="lnk" onclick="copyTon(this)" data-ru>Копировать</button>
       </div>
       <div class="actions">
-        <a class="btn" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-en>Donate in RUB with CloudTips</a>
-        <a class="btn" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-ru>Поддержать в рублях через CloudTips</a>
+        <a class="btn" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-en>Send in rubles with CloudTips</a>
+        <a class="btn" href="https://pay.cloudtips.ru/p/a207bf02" target="_blank" rel="noopener" data-ru>Отправить в рублях через CloudTips</a>
       </div>
-      <p class="note" data-en>Nothing in Veil is paywalled, and the licence stays AGPLv3 either way. The membership only buys the ability to ship a build iOS will actually run.</p>
-      <p class="note" data-ru>Ничего в Veil не закрыто платно, и лицензия в любом случае остаётся AGPLv3. Членство нужно только для того, чтобы выпустить сборку, которую iOS реально запустит.</p>
+      <p class="note" data-en>Veil stays free and open source either way.</p>
+      <p class="note" data-ru>Veil в любом случае останется бесплатным и с открытым кодом.</p>
     </div>
   </div>
 </section>
@@ -418,10 +420,10 @@
         <a href="https://github.com/faustyu1/veil/releases" data-en>Releases</a><a href="https://github.com/faustyu1/veil/releases" data-ru>Релизы</a>
         <a href="https://github.com/faustyu1/veil/blob/main/LICENSE" data-en>AGPLv3 license</a><a href="https://github.com/faustyu1/veil/blob/main/LICENSE" data-ru>Лицензия AGPLv3</a>
       </div>
-      <p class="credit" data-en>Powered by <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> and <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
+      <p class="credit" data-en>Built on <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> and <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
       <p class="credit" data-ru>Работает на <a href="https://github.com/XTLS/Xray-core">Xray-core</a>, <a href="https://github.com/SagerNet/sing-box">sing-box</a> и <a href="https://github.com/xjasonlyu/tun2socks">tun2socks</a>.</p>
-      <p class="disc" data-en>Veil is a client for proxy protocols intended for privacy, development and lawful circumvention of censorship. You are responsible for complying with the laws and terms of service that apply to you.</p>
-      <p class="disc" data-ru>Veil — клиент для прокси-протоколов, предназначенный для приватности, разработки и законного обхода цензуры. Вы несёте ответственность за соблюдение применимых к вам законов и условий использования.</p>
+      <p class="disc" data-en>Veil is an app for connecting to proxy servers. Use it for privacy and lawful access to blocked content, and follow the laws and rules that apply to you.</p>
+      <p class="disc" data-ru>Veil — программа для подключения к прокси-серверам. Используйте её для приватности и законного доступа к заблокированному, соблюдая законы и правила, которые к вам применяются.</p>
     </div>
   </div>
 </footer>
