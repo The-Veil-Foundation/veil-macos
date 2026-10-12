@@ -13,7 +13,6 @@ struct ContentView: View {
 
     @State private var showAddSheet = false
     @State private var showLog = false
-    @State private var showFilters = false
     @State private var isRefreshing = false
     @State private var searchText = ""
     @State private var aliveOnly = false
@@ -96,13 +95,6 @@ struct ContentView: View {
             .toolbar { toolbarContent }
             .sheet(isPresented: $showAddSheet) { AddView() }
             .sheet(isPresented: $showLog) { LogView() }
-            .sheet(isPresented: $showFilters) {
-                FilterSheet(aliveOnly: $aliveOnly,
-                            sortByPing: $sortByPing,
-                            selectedTags: $selectedTags,
-                            selectedCountries: $selectedCountries,
-                            selectedProtocols: $selectedProtocols)
-            }
             .sheet(item: $qrServer) { QRDisplayView(server: $0) }
             .sheet(item: $annotating) { NodeAnnotationView(server: $0) }
             .sheet(item: $inspecting) { server in
@@ -112,6 +104,7 @@ struct ContentView: View {
             .sheet(item: $groupDetail) { GroupMembersView(group: $0) }
             // A filter whose chips are gone would narrow the list invisibly.
             .onChange(of: store.settings.listGrouping) { _, _ in store.save() }
+            .onChange(of: store.settings.showHiddenNodes) { _, _ in store.save() }
             .onChange(of: sortByPing) { _, on in if on { pingAllIfUntested() } }
             .onChange(of: aliveOnly) { _, on in if on { pingAllIfUntested() } }
             .onChange(of: store.settings.autoTags) { _, on in
@@ -178,36 +171,77 @@ struct ContentView: View {
 
     // MARK: - Pieces
 
-    /// How the list is divided up, and what narrows it. Both answer the same
-    /// question — what am I looking at — and neither belongs in Settings. One
-    /// system menu in the bar, the way Mail and Files do it, rather than a row
-    /// of home-made buttons over the list.
+    /// How the list is divided up, and what narrows it, as one system menu in
+    /// the bar — the way Mail and Photos do it — rather than a sheet of
+    /// home-made controls. Multiple-choice submenus stay open while ticking.
     private var viewMenu: some View {
         @Bindable var store = store
         let narrowed = activeFilterCount > 0 || sortByPing
+        // Countries are read out of node names, so they answer to the same
+        // switch as the other derived tags.
+        let countries = store.settings.autoTags ? countriesInUse : []
+        let protocols = protocolsInUse
+
         return Menu {
-            Picker(selection: $store.settings.listGrouping) {
-                ForEach(ListGrouping.allCases) { grouping in
-                    Label(loc(grouping.title), systemImage: grouping.icon).tag(grouping)
+            Section {
+                // A submenu of ticks rather than a menu-style Picker: the
+                // Picker fills in its subtitle a beat after the menu opens.
+                Menu {
+                    ForEach(ListGrouping.allCases) { grouping in
+                        Toggle(isOn: Binding(
+                            get: { store.settings.listGrouping == grouping },
+                            set: { if $0 { store.settings.listGrouping = grouping } }
+                        )) {
+                            Label(loc(grouping.title), systemImage: grouping.icon)
+                        }
+                    }
+                } label: {
+                    Label(loc("Group by"), systemImage: store.settings.listGrouping.icon)
+                    Text(loc(store.settings.listGrouping.title))
                 }
-            } label: {
-                Label(loc("Group by"), systemImage: store.settings.listGrouping.icon)
-            }
-            .pickerStyle(.menu)
 
-            Toggle(isOn: $sortByPing) {
-                Label(loc("By ping"), systemImage: "arrow.up.arrow.down")
+                Toggle(isOn: $sortByPing) {
+                    Label(loc("By ping"), systemImage: "arrow.up.arrow.down")
+                }
             }
 
-            Divider()
+            Section(loc("Filters")) {
+                Toggle(isOn: $aliveOnly) {
+                    Label(loc("Alive"), systemImage: "bolt.horizontal")
+                }
 
-            Button {
-                showFilters = true
-            } label: {
-                Label(activeFilterCount > 0
-                      ? "\(loc("Filters")): \(activeFilterCount)"
-                      : loc("Filters"),
-                      systemImage: "slider.horizontal.3")
+                if protocols.count > 1 {
+                    multiChoice(loc("Protocol"), systemImage: "network",
+                                options: protocols.map { ($0, $0.rawValue.uppercased()) },
+                                selection: $selectedProtocols)
+                }
+                if countries.count > 1 {
+                    multiChoice(loc("Country"), systemImage: "globe",
+                                options: countries.map {
+                                    ($0, NodeFacets.flag(for: $0) + " " + NodeFacets.countryName(for: $0))
+                                },
+                                selection: $selectedCountries)
+                }
+                if !store.allTags.isEmpty {
+                    multiChoice(loc("Tags"), systemImage: "tag",
+                                options: store.allTags.map { ($0, $0) },
+                                selection: $selectedTags)
+                }
+
+                Toggle(isOn: $store.settings.showHiddenNodes) {
+                    Label(loc("Show hidden servers"), systemImage: "eye")
+                }
+            }
+
+            if activeFilterCount > 0 {
+                Section {
+                    Button(loc("Clear filters"), systemImage: "xmark.circle", role: .destructive) {
+                        aliveOnly = false
+                        selectedTags = []
+                        selectedCountries = []
+                        selectedProtocols = []
+                    }
+                }
             }
         } label: {
             Image(systemName: narrowed
@@ -215,6 +249,55 @@ struct ContentView: View {
                   : "line.3.horizontal.decrease.circle")
         }
         .accessibilityLabel(loc("Filters"))
+    }
+
+    /// A submenu of options that can be ticked together. Its subtitle names
+    /// what is ticked, so the top level shows the filter without opening it.
+    private func multiChoice<Value: Hashable>(_ title: String, systemImage: String,
+                                              options: [(Value, String)],
+                                              selection: Binding<Set<Value>>) -> some View {
+        Menu {
+            ForEach(options, id: \.0) { value, name in
+                Toggle(name, isOn: Binding(
+                    get: { selection.wrappedValue.contains(value) },
+                    set: { on in
+                        if on { selection.wrappedValue.insert(value) }
+                        else { selection.wrappedValue.remove(value) }
+                    }
+                ))
+            }
+        } label: {
+            Label(title, systemImage: systemImage)
+            let picked = options.filter { selection.wrappedValue.contains($0.0) }.map(\.1)
+            if !picked.isEmpty {
+                Text(picked.joined(separator: ", "))
+            }
+        }
+        .menuActionDismissBehavior(.disabled)
+    }
+
+    /// The places the user actually has servers in, sorted by name.
+    private var countriesInUse: [String] {
+        var seen = Set<String>()
+        var codes: [String] = []
+        for server in store.allServers {
+            let name = store.annotation(for: server.id).nameOverride ?? server.name
+            guard let code = NodeFacets.country(in: name, proto: server.proto),
+                  seen.insert(code).inserted else { continue }
+            codes.append(code)
+        }
+        return codes.sorted {
+            NodeFacets.countryName(for: $0).localizedStandardCompare(
+                NodeFacets.countryName(for: $1)) == .orderedAscending
+        }
+    }
+
+    private var protocolsInUse: [ProxyProtocol] {
+        var seen: [ProxyProtocol] = []
+        for server in store.allServers where !seen.contains(server.proto) {
+            seen.append(server.proto)
+        }
+        return seen
     }
 
     private var emptyState: some View {
@@ -278,10 +361,6 @@ struct ServerSectionView: View {
     @Binding var annotating: ProxyConfig?
     @Binding var inspecting: ProxyConfig?
     @Binding var groupDetail: ServerGroup?
-
-    /// The width a row's content gets, so a long-press preview can be drawn
-    /// as wide as the row it lifts out of.
-    @State private var rowWidth: CGFloat = 0
 
     private var subscription: Subscription? {
         guard let id = section.subscriptionID else { return nil }
@@ -361,37 +440,42 @@ struct ServerSectionView: View {
                                 via: isActive ? favouredMember(group) : nil)
         return content
             .contentShape(Rectangle())
-            .background(widthReader)
-            .onTapGesture { if !isArranging { handleTap(row.id) } }
-            .contextMenu {
-                Button(tunnel.isConnected ? loc("Switch here") : loc("Connect"),
-                       systemImage: "bolt.fill") {
-                    store.select(row.id)
-                    Task { await tunnel.connect(to: row.id, store: store) }
+            .overlay {
+                RowMenuSurface(isEnabled: !isArranging, backdrop: backdrop, backTitle: loc("Back"),
+                               onTap: { handleTap(row.id) }) {
+                    groupMenu(row, group: group)
                 }
-                .disabled(!store.canRun(row.id))
-                if let group {
-                    Button(loc("Members and latency"), systemImage: "list.bullet") {
-                        groupDetail = group
-                    }
-                    // A group has no latency of its own: it is whichever member
-                    // the core finds quickest, so the useful measurement is theirs.
-                    Button(loc("Test ping"), systemImage: "speedometer") {
-                        pinger.test(store.members(of: group))
-                    }
-                    if store.isOwnGroup(group.id) {
-                        Divider()
-                        Button(loc("Delete group"), systemImage: "trash", role: .destructive) {
-                            // By value: reading the row's own binding inside the
-                            // removal traps with an exclusivity conflict.
-                            let id = group.id
-                            store.removeGroup(id: id)
-                        }
-                    }
-                }
-            } preview: {
-                previewCard(content)
             }
+    }
+
+    private func groupMenu(_ row: ProxyConfig, group: ServerGroup?) -> RowMenu {
+        var main: [RowMenuItem] = [
+            .button(tunnel.isConnected ? loc("Switch here") : loc("Connect"),
+                    systemImage: "bolt.fill", disabled: !store.canRun(row.id)) {
+                store.select(row.id)
+                Task { await tunnel.connect(to: row.id, store: store) }
+            }
+        ]
+        var end: [RowMenuItem] = []
+        if let group {
+            main.append(.button(loc("Members and latency"), systemImage: "list.bullet") {
+                groupDetail = group
+            })
+            // A group has no latency of its own: it is whichever member the
+            // core finds quickest, so the useful measurement is theirs.
+            main.append(.button(loc("Test ping"), systemImage: "speedometer") {
+                pinger.test(store.members(of: group))
+            })
+            if store.isOwnGroup(group.id) {
+                // By value: reading the row's own binding inside the removal
+                // traps with an exclusivity conflict.
+                let id = group.id
+                end.append(.button(loc("Delete group"), systemImage: "trash", destructive: true) {
+                    store.removeGroup(id: id)
+                })
+            }
+        }
+        return [main, end]
     }
 
     /// The member a "fastest" group's probes put first.
@@ -421,47 +505,11 @@ struct ServerSectionView: View {
                                 autoTags: store.settings.autoTags)
         return content
             .contentShape(Rectangle())
-            .background(widthReader)
-            .onTapGesture { if !isArranging { handleTap(server.id) } }
-            .contextMenu {
-                Button(tunnel.isConnected ? loc("Switch here") : loc("Connect"),
-                       systemImage: "bolt.fill") {
-                    store.select(server.id)
-                    Task { await tunnel.connect(to: server.id, store: store) }
+            .overlay {
+                RowMenuSurface(isEnabled: !isArranging, backdrop: backdrop, backTitle: loc("Back"),
+                               onTap: { handleTap(server.id) }) {
+                    serverMenu(server, annotation: annotation, isManual: isManual, isActive: isActive)
                 }
-                .disabled(!server.xraySupported)
-                Button(loc("Test ping"), systemImage: "speedometer") { pinger.test([server]) }
-                Divider()
-                Button(annotation.pinned ? loc("Unpin") : loc("Pin"),
-                       systemImage: annotation.pinned ? "pin.slash" : "pin") {
-                    store.togglePinned(serverID: server.id)
-                }
-                Button(annotation.hidden ? loc("Unhide") : loc("Hide"),
-                       systemImage: annotation.hidden ? "eye" : "eye.slash") {
-                    store.setHidden(!annotation.hidden, serverID: server.id)
-                }
-                Button(loc("Rename and tag…"), systemImage: "tag") { annotating = server }
-                if annotation.sortIndex != nil {
-                    Button(loc("Reset manual order"), systemImage: "arrow.uturn.backward") {
-                        store.clearManualOrder(section: section.servers.map(\.id))
-                    }
-                }
-                Divider()
-                Button(isManual ? loc("Edit") : loc("Inspect"),
-                       systemImage: "curlybraces") { inspecting = server }
-                Button(loc("Copy link"), systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = LinkBuilder.link(for: server)
-                }
-                Button(loc("Show QR code"), systemImage: "qrcode") { qrServer = server }
-                if isManual && !isActive {
-                    Divider()
-                    Button(loc("Delete"), systemImage: "trash", role: .destructive) {
-                        let id = server.id
-                        store.removeServer(id: id)
-                    }
-                }
-            } preview: {
-                previewCard(content)
             }
             .swipeActions(edge: .leading) {
                 Button {
@@ -491,32 +539,54 @@ struct ServerSectionView: View {
             }
     }
 
-    // MARK: Long-press preview
+    // MARK: Long-press menu
 
-    /// Left to itself the menu lifts the bare row content: cut flush to the
-    /// text, square-cornered, and on iOS 26 over an unblurred list. A preview
-    /// of its own is a padded, rounded card, and gets the blurred backdrop.
-    private func previewCard(_ content: some View) -> some View {
-        content
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(width: rowWidth > 0 ? rowWidth + 32 : nil, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground))
-            // The preview is hosted outside the list and inherits none of its
-            // observable objects; a row reading one there traps.
-            .environment(loc)
-            .environment(store)
-            .environment(tunnel)
-            .environment(pinger)
-            .liftsMenuBackdrop(backdrop)
-    }
+    /// Everyday actions first. Advanced does not open a submenu over them: it
+    /// swaps the open menu's contents for the rarer ones, with Back to return
+    /// — the way Telegram does it.
+    private func serverMenu(_ server: ProxyConfig, annotation: NodeAnnotation,
+                            isManual: Bool, isActive: Bool) -> RowMenu {
+        let main: [RowMenuItem] = [
+            .button(tunnel.isConnected ? loc("Switch here") : loc("Connect"),
+                    systemImage: "bolt.fill", disabled: !server.xraySupported) {
+                store.select(server.id)
+                Task { await tunnel.connect(to: server.id, store: store) }
+            },
+            .button(loc("Test ping"), systemImage: "speedometer") { pinger.test([server]) },
+            .button(annotation.pinned ? loc("Unpin") : loc("Pin"),
+                    systemImage: annotation.pinned ? "pin.slash" : "pin") {
+                store.togglePinned(serverID: server.id)
+            },
+            .button(loc("Copy link"), systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = LinkBuilder.link(for: server)
+            },
+            .button(loc("Show QR code"), systemImage: "qrcode") { qrServer = server }
+        ]
 
-    private var widthReader: some View {
-        GeometryReader { geometry in
-            Color.clear
-                .onAppear { rowWidth = geometry.size.width }
-                .onChange(of: geometry.size.width) { _, width in rowWidth = width }
+        var advanced: [RowMenuItem] = [
+            .button(loc("Rename and tag…"), systemImage: "tag") { annotating = server },
+            .button(annotation.hidden ? loc("Unhide") : loc("Hide"),
+                    systemImage: annotation.hidden ? "eye" : "eye.slash") {
+                store.setHidden(!annotation.hidden, serverID: server.id)
+            }
+        ]
+        if annotation.sortIndex != nil {
+            let order = section.servers.map(\.id)
+            advanced.append(.button(loc("Reset manual order"), systemImage: "arrow.uturn.backward") {
+                store.clearManualOrder(section: order)
+            })
         }
+        advanced.append(.button(isManual ? loc("Edit") : loc("Inspect"),
+                                systemImage: "curlybraces") { inspecting = server })
+
+        var end: [RowMenuItem] = []
+        if isManual && !isActive {
+            let id = server.id
+            end.append(.button(loc("Delete"), systemImage: "trash", destructive: true) {
+                store.removeServer(id: id)
+            })
+        }
+        return [main, [.level(loc("Advanced"), systemImage: "ellipsis.circle", [advanced])], end]
     }
 
     private var hiddenFooter: some View {

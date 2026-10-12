@@ -36,6 +36,11 @@ struct VeilApp: App {
         loc.language = store.settings.language
         tunnel.notifyOnConnect = store.settings.notifyOnConnect
         TunnelController.lastActiveID = store.selectedServerID
+        // The app no longer hides servers; one hidden by an earlier build
+        // would otherwise stay out of every group with no switch to undo it.
+        for (id, note) in store.settings.nodeAnnotations where note.hidden {
+            store.setHidden(false, serverID: id)
+        }
         if store.settings.notifyOnConnect {
             NotificationManager.requestAuthorization()
         }

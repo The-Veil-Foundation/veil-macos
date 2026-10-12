@@ -15,7 +15,6 @@ struct SubscriptionHeaderRow: View {
 
     @State private var confirmRemove = false
     @State private var isRefreshing = false
-    @State private var rowWidth: CGFloat = 0
 
     private var isPinned: Bool { subscription.pinned == true }
 
@@ -23,19 +22,11 @@ struct SubscriptionHeaderRow: View {
         VStack(alignment: .leading, spacing: 8) {
             titleRow
             SubscriptionDetails(subscription: subscription)
+                .contentShape(Rectangle())
+                // The same menu as the ⋯ button, on a long press.
+                .overlay { surface(onTap: nil) }
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .background {
-            GeometryReader { geometry in
-                Color.clear
-                    .onAppear { rowWidth = geometry.size.width }
-                    .onChange(of: geometry.size.width) { _, width in rowWidth = width }
-            }
-        }
-        // The same actions as the ⋯ button, on a long press. Its own preview
-        // gets the blurred backdrop the bare menu button never has.
-        .contextMenu { menuItems } preview: { preview }
         .confirmationDialog(loc("Remove this subscription?"),
                             isPresented: $confirmRemove, titleVisibility: .visible) {
             Button(loc("Remove"), role: .destructive) {
@@ -78,111 +69,91 @@ struct SubscriptionHeaderRow: View {
                 Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
-            .onTapGesture { toggleCollapsed() }
+            .overlay { surface(onTap: toggleCollapsed) }
 
             menu
         }
     }
 
     private var menu: some View {
-        Menu {
-            menuItems
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .padding(.leading, 4)
-        }
+        RowMenuButton(backdrop: backdrop, backTitle: loc("Back"),
+                      accessibilityLabel: loc("More")) { menuSections }
+            .fixedSize()
     }
 
-    /// The source's name and figures as a card, for the long-press preview.
-    /// It is hosted outside the list, so the observable objects its parts read
-    /// have to be handed over again.
-    private var preview: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if isPinned {
-                    Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary)
-                }
-                Text(subscription.name).font(.headline).lineLimit(1)
-                Text(verbatim: "\(count)")
-                    .font(.caption2)
-                    .padding(.horizontal, 6).padding(.vertical, 1)
-                    .background(Capsule().fill(Color.secondary.opacity(0.18)))
-                Spacer(minLength: 0)
-            }
-            SubscriptionDetails(subscription: subscription)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(width: rowWidth > 0 ? rowWidth + 32 : nil, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground))
-        .environment(loc)
-        .environment(store)
-        .environment(tunnel)
-        .environment(pinger)
-        .liftsMenuBackdrop(backdrop)
+    private func surface(onTap: (() -> Void)?) -> some View {
+        RowMenuSurface(isEnabled: true, backdrop: backdrop, backTitle: loc("Back"),
+                       onTap: onTap) { menuSections }
     }
 
-    @ViewBuilder
-    private var menuItems: some View {
-        Button(loc("Test ping (group)"), systemImage: "speedometer") {
-            pinger.test(subscription.servers)
-        }
-        Button(subscription.isCollapsed ? loc("Expand") : loc("Collapse"),
-               systemImage: subscription.isCollapsed ? "chevron.down" : "chevron.up") {
-            toggleCollapsed()
-        }
-        Button(isPinned ? loc("Unpin") : loc("Pin"),
-               systemImage: isPinned ? "pin.slash" : "pin") {
-            store.togglePinned(subscriptionID: subscription.id)
-        }
-        Button(loc("Move up"), systemImage: "arrow.up") { moveBy(-1) }
-            .disabled(index == 0)
-        Button(loc("Move down"), systemImage: "arrow.down") { moveBy(1) }
-            .disabled(index == store.subscriptions.count - 1)
-        Divider()
-        Button(loc("Make a fastest-node group"), systemImage: "bolt.horizontal") {
-            store.addAutoGroup(named: subscription.name,
-                               query: GroupQuery(sourceIDs: [subscription.id]))
-        }
+    /// Everyday actions first. Advanced swaps the open menu's contents for the
+    /// rarer ones, with Back to return, instead of opening a submenu over them.
+    private var menuSections: RowMenu {
+        var main: [RowMenuItem] = []
         if !subscription.isManual {
-            Divider()
-            Button(loc("Refresh now"), systemImage: "arrow.clockwise") {
+            main.append(.button(loc("Refresh now"), systemImage: "arrow.clockwise") {
                 Task {
                     isRefreshing = true
                     await SubscriptionService.refresh(subscription, into: store)
                     isRefreshing = false
                 }
+            })
+        }
+        main.append(.button(loc("Test ping (group)"), systemImage: "speedometer") {
+            pinger.test(subscription.servers)
+        })
+        main.append(.button(isPinned ? loc("Unpin") : loc("Pin"),
+                            systemImage: isPinned ? "pin.slash" : "pin") {
+            store.togglePinned(subscriptionID: subscription.id)
+        })
+        if let support = subscription.supportURL, let url = URL(string: support) {
+            main.append(.button(loc("Support"), systemImage: "questionmark.circle") {
+                UIApplication.shared.open(url)
+            })
+        }
+        if let page = subscription.webPageURL, let url = URL(string: page) {
+            main.append(.button(loc("Provider's page"), systemImage: "safari") {
+                UIApplication.shared.open(url)
+            })
+        }
+
+        var advanced: [RowMenuItem] = [
+            .button(subscription.isCollapsed ? loc("Expand") : loc("Collapse"),
+                    systemImage: subscription.isCollapsed ? "chevron.down" : "chevron.up") {
+                toggleCollapsed()
+            },
+            .button(loc("Move up"), systemImage: "arrow.up", disabled: index == 0) { moveBy(-1) },
+            .button(loc("Move down"), systemImage: "arrow.down",
+                    disabled: index == store.subscriptions.count - 1) { moveBy(1) },
+            .button(loc("Make a fastest-node group"), systemImage: "bolt.horizontal") {
+                store.addAutoGroup(named: subscription.name,
+                                   query: GroupQuery(sourceIDs: [subscription.id]))
             }
-            Toggle(loc("Auto-update"), isOn: Binding(
-                get: { subscription.autoUpdate },
-                set: { store.setAutoUpdate($0, id: subscription.id) }
-            ))
-            Button(loc("Copy subscription link"), systemImage: "link") {
+        ]
+        var end: [RowMenuItem] = []
+        if !subscription.isManual {
+            let id = subscription.id
+            let autoUpdate = subscription.autoUpdate
+            advanced.append(.button(loc("Auto-update"), systemImage: "arrow.triangle.2.circlepath",
+                                    checked: autoUpdate) {
+                store.setAutoUpdate(!autoUpdate, id: id)
+            })
+            advanced.append(.button(loc("Copy subscription link"), systemImage: "link") {
                 // The path in it is the access token: onto the clipboard,
                 // never onto the screen.
                 if let url = store.subscriptionURL(for: subscription) {
                     UIPasteboard.general.string = url
                 }
-            }
-            if let support = subscription.supportURL, let url = URL(string: support) {
-                Link(destination: url) {
-                    Label(loc("Support"), systemImage: "questionmark.circle")
-                }
-            }
-            if let page = subscription.webPageURL, let url = URL(string: page) {
-                Link(destination: url) {
-                    Label(loc("Provider's page"), systemImage: "safari")
-                }
-            }
-            Divider()
+            })
             // Can't remove a subscription that holds the active server.
             let holdsActive = tunnel.isConnected
                 && subscription.servers.contains { $0.id == tunnel.activeServerID }
-            Button(loc("Remove"), systemImage: "trash", role: .destructive) {
+            end.append(.button(loc("Remove"), systemImage: "trash",
+                               destructive: true, disabled: holdsActive) {
                 confirmRemove = true
-            }
-            .disabled(holdsActive)
+            })
         }
+        return [main, [.level(loc("Advanced"), systemImage: "ellipsis.circle", [advanced])], end]
     }
 
     // MARK: - Order

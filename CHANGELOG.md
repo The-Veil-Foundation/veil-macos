@@ -21,6 +21,13 @@ All notable changes to Veil are recorded here. Versions follow
   It reloads the core without dropping the VPN.
 - iOS settings gain list options, the subscription User-Agent, device ID
   management and a diagnostics report that is redacted before it is shared.
+- iOS long-press menus keep the everyday actions on top. **Advanced** swaps the
+  open menu for the rarer ones, with Back to return, and the app behind is
+  blurred while a menu is up.
+- Grouping, sort by ping and every filter live in one menu in the iOS
+  navigation bar.
+- The iOS QR code is drawn with rounded dots and the app's mark, opens at once,
+  and has proper Copy and Share buttons.
 
 ### Changed
 
