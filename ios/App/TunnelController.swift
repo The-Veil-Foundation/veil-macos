@@ -5,7 +5,7 @@ import UserNotifications
 
 /// Drives the VPN from the app side.
 ///
-/// The app owns no networking of its own: it writes the Xray config into the
+/// The app owns no networking of its own: it renders the Xray config into the
 /// shared container, installs/updates the tunnel profile, and then asks
 /// NetworkExtension to start it. Everything after that happens in the provider
 /// process; state and counters come back over `sendProviderMessage`.
@@ -14,26 +14,36 @@ import UserNotifications
 final class TunnelController {
 
     private(set) var state: ConnectionState = .disconnected
+    /// What the tunnel was started for: a server or a group.
     private(set) var activeServerID: UUID?
     private(set) var activeServerName: String = ""
     private(set) var coreVersion: String = ""
     private(set) var uplinkBytes: Int64 = 0
     private(set) var downlinkBytes: Int64 = 0
     private(set) var logs: String = ""
-    private(set) var uptimeText: String = ""
+    /// When the current session began. The uptime clock is drawn from this
+    /// by the system, so nothing has to tick once a second to keep it fresh.
+    private(set) var connectedSince: Date?
     private(set) var isInstalled: Bool = false
+    /// The observatory's latest reading, by outbound tag.
+    private(set) var observation: [String: ObservedOutbound] = [:]
 
     /// Post a local notification on connect / disconnect.
     var notifyOnConnect: Bool = false
+    /// Set while the log screen is open, so the poll ships the log tail back
+    /// only when somebody is reading it.
+    var wantsLog: Bool = false
 
     private var manager: NETunnelProviderManager?
-    private var connectedSince: Date?
     /// Held in a box so `deinit` — which is never main-actor isolated — can
     /// still unregister the observer.
     private let statusObserver = ObserverToken()
     private var pollTask: Task<Void, Never>?
-    /// Server the user asked for, kept so a switch can reuse the live tunnel.
+    /// Selection the user asked for, kept so a switch can reuse the live tunnel.
     private var pendingServerID: UUID?
+    /// What the running core was built from. Compared against the settings to
+    /// say whether a routing edit is waiting for a reload.
+    private var applied: AppliedKey?
 
     var isConnected: Bool { state == .connected }
 
@@ -64,14 +74,14 @@ final class TunnelController {
 
     /// Creates the profile if needed and points it at the current server. iOS
     /// asks the user to allow the VPN configuration the first time this runs.
-    private func prepareManager(server: ProxyConfig) async throws -> NETunnelProviderManager {
+    private func prepareManager(serverName: String, address: String) async throws -> NETunnelProviderManager {
         let target = manager ?? NETunnelProviderManager()
 
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = AppGroup.tunnelBundleIdentifier
         // Shown in Settings > VPN. Routing is Xray's job, this is cosmetic.
-        proto.serverAddress = server.address
-        proto.providerConfiguration = ["server": server.name]
+        proto.serverAddress = address
+        proto.providerConfiguration = ["server": serverName]
         // Bring the tunnel back automatically if the provider is ever killed.
         proto.disconnectOnSleep = false
 
@@ -105,23 +115,21 @@ final class TunnelController {
 
     // MARK: - Connect / disconnect
 
-    /// Connects to `server`, or switches to it without dropping the tunnel when
-    /// one is already up.
-    func connect(to server: ProxyConfig, settings: AppSettings) async {
-        guard server.xraySupported else {
-            fail(TunnelConfigWriter.WriteError.unsupportedProtocol(server.proto).localizedDescription)
-            return
-        }
-
+    /// Connects to `id` — a server or a group — or switches to it without
+    /// dropping the tunnel when one is already up.
+    func connect(to id: UUID, store: ServerStore) async {
+        let profile = store.xrayProfile(activeID: id)
+        let session = store.tunnelSession(for: id)
         do {
-            try TunnelConfigWriter.write(server: server, settings: settings)
+            try TunnelConfigWriter.write(profile: profile, session: session)
         } catch {
             fail(error.localizedDescription)
             return
         }
 
-        pendingServerID = server.id
-        activeServerName = server.name
+        pendingServerID = id
+        activeServerName = session.serverName
+        applied = AppliedKey(store: store, activeID: id)
 
         // Live tunnel: just tell the provider to reload. The utun stays up, iOS
         // never sees a reconnect, and the switch takes well under a second.
@@ -129,7 +137,7 @@ final class TunnelController {
             do {
                 try session.sendProviderMessage(TunnelRequest(.reload).encoded()) { [weak self] data in
                     Task { @MainActor in
-                        self?.activeServerID = server.id
+                        self?.activeServerID = id
                         if let data, let status = TunnelStatus.decode(data) {
                             self?.apply(status)
                         }
@@ -143,11 +151,28 @@ final class TunnelController {
 
         state = .connecting
         do {
-            let target = try await prepareManager(server: server)
+            let target = try await prepareManager(serverName: session.serverName,
+                                                  address: session.serverAddress)
             try target.connection.startVPNTunnel()
         } catch {
             fail(Self.describe(error))
         }
+    }
+
+    /// Pushes edited settings into the running tunnel. The core restarts on
+    /// the new config; the tunnel itself stays up.
+    func applyChanges(store: ServerStore) async {
+        guard isConnected, let id = activeServerID ?? pendingServerID else { return }
+        await connect(to: id, store: store)
+    }
+
+    /// Whether the settings now differ from what the running core was built
+    /// from, in a way a reload would change.
+    func hasUnappliedChanges(store: ServerStore) -> Bool {
+        guard isConnected, let applied, let id = activeServerID ?? pendingServerID else {
+            return false
+        }
+        return AppliedKey(store: store, activeID: id) != applied
     }
 
     /// NetworkExtension reports its problems as bare `NEVPNError`s whose
@@ -193,18 +218,61 @@ final class TunnelController {
         state = .disconnected
     }
 
+    // MARK: - Checking a node
+
+    enum CheckOutcome: Equatable {
+        case ok
+        case failed(String)
+        /// The core lives in the extension, which only runs while connected.
+        case unavailable
+    }
+
+    /// Runs one node past the core that will execute it.
+    func check(_ server: ProxyConfig) async -> CheckOutcome {
+        if let missing = ConfigValidator.missingCredential(server) { return .failed(missing) }
+        guard server.xraySupported else {
+            return .failed(XrayProfileBuilder.BuildError.unsupported(server.name).localizedDescription)
+        }
+        var profile = XrayProfile()
+        profile.servers = [server]
+        profile.activeID = server.id
+        profile.dns.enabled = false
+        profile.stats = false
+        let json: String
+        do {
+            json = try XrayProfileBuilder.jsonString(profile)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+        guard isConnected, let session = manager?.connection as? NETunnelProviderSession else {
+            return .unavailable
+        }
+        let response: Data? = await withCheckedContinuation { continuation in
+            do {
+                try session.sendProviderMessage(TunnelRequest(.check, config: json).encoded()) { data in
+                    continuation.resume(returning: data)
+                }
+            } catch {
+                continuation.resume(returning: nil)
+            }
+        }
+        guard let response, let status = TunnelStatus.decode(response) else { return .unavailable }
+        if let error = status.checkError { return .failed(error) }
+        return .ok
+    }
+
     // MARK: - State
 
     private func syncState(from status: NEVPNStatus) {
         switch status {
         case .connected:
             let wasConnected = (state == .connected)
-            activeServerID = pendingServerID ?? activeServerID
+            activeServerID = pendingServerID ?? activeServerID ?? Self.lastActiveID
             state = .connected
             if connectedSince == nil { connectedSince = Date() }
             startPolling()
             if notifyOnConnect && !wasConnected {
-                notify(title: "Connected", body: activeServerName)
+                NotificationManager.notify(title: "Connected", body: activeServerName)
             }
         case .connecting, .reasserting, .disconnecting:
             state = .connecting
@@ -212,20 +280,25 @@ final class TunnelController {
             let wasActive = (state == .connected || state == .connecting)
             stopPolling()
             connectedSince = nil
-            uptimeText = ""
             activeServerID = nil
+            applied = nil
+            observation = [:]
             if let reason = readLastError(), wasActive {
                 state = .failed(reason)
             } else {
                 state = .disconnected
                 if notifyOnConnect && wasActive {
-                    notify(title: "Disconnected", body: activeServerName)
+                    NotificationManager.notify(title: "Disconnected", body: activeServerName)
                 }
             }
         @unknown default:
             state = .disconnected
         }
     }
+
+    /// The selection a tunnel that was already up when the app launched was
+    /// started for. The store remembers it as the last pick.
+    static var lastActiveID: UUID?
 
     private func fail(_ message: String) {
         state = .failed(message)
@@ -241,14 +314,14 @@ final class TunnelController {
 
     // MARK: - Live status
 
-    /// Polls the provider once a second for counters, log and uptime. Only runs
-    /// while connected, so an idle app costs nothing.
+    /// Polls the provider once a second for counters and probe results, and
+    /// for the log while it is on screen. Only runs while connected, so an
+    /// idle app costs nothing.
     private func startPolling() {
         guard pollTask == nil else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshStatus()
-                self?.tickUptime()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
@@ -262,9 +335,10 @@ final class TunnelController {
     func refreshStatus() async {
         guard let session = manager?.connection as? NETunnelProviderSession,
               session.status == .connected else { return }
+        let request = TunnelRequest(.status, includeLog: wantsLog)
         let response: Data? = await withCheckedContinuation { continuation in
             do {
-                try session.sendProviderMessage(TunnelRequest(.status).encoded()) { data in
+                try session.sendProviderMessage(request.encoded()) { data in
                     continuation.resume(returning: data)
                 }
             } catch {
@@ -285,26 +359,39 @@ final class TunnelController {
         coreVersion = status.coreVersion
         uplinkBytes = status.uplinkBytes
         downlinkBytes = status.downlinkBytes
-        logs = status.log
+        if wantsLog, logs != status.log { logs = status.log }
         if !status.serverName.isEmpty { activeServerName = status.serverName }
         if let startedAt = status.startedAt, connectedSince == nil {
             connectedSince = startedAt
         }
+        let byTag = Dictionary(status.observation.map { ($0.tag, $0) },
+                               uniquingKeysWith: { a, _ in a })
+        if byTag != observation { observation = byTag }
     }
 
-    private func tickUptime() {
-        guard let since = connectedSince else { uptimeText = ""; return }
-        let total = Int(Date().timeIntervalSince(since))
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        uptimeText = h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%02d:%02d", m, s)
+    /// What the observatory says about one server, if it measured it.
+    func observed(_ serverID: UUID) -> ObservedOutbound? {
+        observation[ProfileTags.server(serverID)]
     }
+}
 
-    // MARK: - Notifications
+/// The parts of the store a running core was built from.
+private struct AppliedKey: Equatable {
+    var routing: RoutingFingerprint
+    var logLevel: LogLevel
+    var ipv6: Bool
+    var mtu: Int
+    var activeID: UUID
+    var selections: [UUID?]
 
-    private func notify(title: String, body: String) {
-        NotificationManager.notify(title: title, body: body)
+    @MainActor
+    init(store: ServerStore, activeID: UUID) {
+        routing = store.settings.routingFingerprint
+        logLevel = store.settings.logLevel
+        ipv6 = store.settings.ipv6Enabled
+        mtu = store.settings.tunnelMTU
+        self.activeID = activeID
+        selections = store.declaredGroups.map(\.selectedID)
     }
 }
 

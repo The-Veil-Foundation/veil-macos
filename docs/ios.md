@@ -92,6 +92,48 @@ deliberately does not ship. They still appear in the server list (imported from
 subscriptions) but are greyed out and cannot be connected — see
 `ProxyConfig.xraySupported`.
 
+## Features shared with the desktop app
+
+The iOS app has the desktop feature set, rendered for one core:
+
+- **Server list** — subscription sections with panel notes, traffic and expiry,
+  grouping by source / country / protocol, tag and protocol filters, sort by
+  ping, pins, custom names and tags, arrange mode.
+- **Sources tab** — what each subscription returned, which entries were
+  skipped and why, the groups the panel declared, and a node inspector that
+  shows each server as Xray JSON or a share link. Manual nodes can be edited
+  and checked by the running core.
+- **Groups** — fastest-node (`urltest`) and manual (`selector`) groups, own or
+  declared by the panel, built from members or from a query over sources and
+  tags.
+- **Routing** — presets, custom rules that send traffic to proxy, direct,
+  block, a single server or a group, community rule lists, and the geo rule
+  database.
+- **DNS** — servers, detours, fake IP and DNS rules.
+- **Settings** — appearance, list options, startup, subscription refresh and
+  User-Agent, device ID, VPN profile and a redacted diagnostics report.
+
+`XrayProfileBuilder` (`Sources/XrayClient/Core/XrayProfileBuilder.swift`) turns
+all of that into one Xray config. Every referenced server becomes an outbound
+tagged `srv-<id>`. A fastest-node group becomes a `leastPing` balancer backed by
+the observatory. A manual group routes straight to its selected member, since
+Xray has no runtime selector.
+
+Changing routing, DNS, groups or tunnel settings while connected shows **Apply
+now** on the status card. That reloads the core in place without dropping the
+tunnel.
+
+### What Xray cannot do
+
+These are left out of the generated config instead of failing it:
+
+- per-app (process) rules, inverted rules, remote rule sets and clash-mode rules;
+- DNS-over-TLS servers (DoH, DoH3, QUIC and plain UDP/TCP all work);
+- `geosite:` / `geoip:` matchers while the rule database is not downloaded.
+
+A rule whose matchers are all dropped is removed whole, so it never widens into
+a catch-all.
+
 ## Building
 
 ```bash
@@ -143,8 +185,23 @@ container `group.dev.local.veil`:
 | `last-error.txt` | extension | app |
 | `geo/*.dat` | app | Xray |
 
-Live state (traffic counters, log tail, core version) is pulled with
+Live state (traffic counters, balancer health, core version) is pulled with
 `NETunnelProviderSession.sendProviderMessage` once a second while connected.
+The log tail rides along only while the log screen is open. A `check` message
+asks the running core to validate a node config, so the node editor reports the
+core's own error. Because the core lives in the extension, that check works only
+while connected.
+
+Traffic counters sum every proxy outbound, so a group's members all count.
+Literal server IPs are added to the tunnel's `excludedRoutes`, which keeps pings
+on the real path rather than through the tunnel.
+
+When the routing preset bypasses the LAN (Bypass LAN, China, Russia), the
+private ranges (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `fc00::/7`,
+`fe80::/10`) are excluded from the tunnel as well, so that traffic never enters
+the extension. Domain-based direct rules still go through Xray, because the OS
+can only exclude by address. A reload whose routes differ re-applies the network
+settings on the running tunnel and keeps the same utun.
 
 **Switching servers does not reconnect the VPN.** The app writes a new config
 and sends a `reload` message; the provider restarts only Xray, keeping the same

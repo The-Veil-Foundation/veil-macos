@@ -277,7 +277,24 @@ enum SubscriptionPayloadParser {
                     applyStream(stream, to: &config)
                     result.append(config)
                 }
-            case .hysteria2, .tuic, .wireguard, .anytls:
+            case .wireguard:
+                // Xray's own WireGuard outbound: the interface keys and
+                // addresses at the top, one entry per peer.
+                for peer in settings["peers"] as? [[String: Any]] ?? [] {
+                    guard let endpoint = peer["endpoint"] as? String,
+                          let (address, port) = splitEndpoint(endpoint) else { continue }
+                    var config = ProxyConfig(name: tag, proto: .wireguard,
+                                             address: address, port: port)
+                    config.privateKey = nonEmpty(settings["secretKey"] as? String)
+                    config.peerPublicKey = nonEmpty(peer["publicKey"] as? String)
+                    config.presharedKey = nonEmpty(peer["preSharedKey"] as? String)
+                    config.localAddresses = settings["address"] as? [String]
+                    config.allowedIPs = peer["allowedIPs"] as? [String]
+                    config.mtu = intValue(settings["mtu"])
+                    config.reserved = (settings["reserved"] as? [Any])?.compactMap(intValue)
+                    result.append(config)
+                }
+            case .hysteria2, .tuic, .anytls:
                 // Not Xray protocols; a config claiming them is malformed.
                 continue
             }
@@ -520,6 +537,14 @@ enum SubscriptionPayloadParser {
         let normalized = name.lowercased()
         if normalized == "shadowsocks" { return .shadowsocks }
         return ProxyProtocol(rawValue: normalized)
+    }
+
+    /// `host:port`, with an IPv6 host in brackets.
+    private static func splitEndpoint(_ endpoint: String) -> (String, Int)? {
+        guard let colon = endpoint.lastIndex(of: ":"),
+              let port = Int(endpoint[endpoint.index(after: colon)...]) else { return nil }
+        let host = endpoint[..<colon].trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        return host.isEmpty ? nil : (host, port)
     }
 
     private static func intValue(_ value: Any?) -> Int? {

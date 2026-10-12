@@ -3,6 +3,40 @@
 All notable changes to Veil are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] — Unreleased
+
+### Added
+
+- The iOS app catches up with the desktop. The server list now has subscription
+  sections with notes, traffic and expiry, grouping, tag and protocol filters,
+  sort by ping, pins, custom names and tags, and an arrange mode.
+- New Sources tab on iOS. It shows what each subscription returned, what was
+  skipped and why, and the groups the panel declared. Every node opens in an
+  inspector as Xray JSON or a share link, and manual nodes can be edited there.
+- Fastest-node and manual groups on iOS, your own or the panel's. Rules can send
+  traffic to a single server or a group, not only to proxy, direct or block.
+- Community rule lists, the full DNS editor (servers, detours, fake IP, DNS
+  rules) and the geo database screen on iOS.
+- iOS shows **Apply now** while connected when routing, DNS or groups changed.
+  It reloads the core without dropping the VPN.
+- iOS settings gain list options, the subscription User-Agent, device ID
+  management and a diagnostics report that is redacted before it is shared.
+
+### Changed
+
+- iOS still runs only Xray. A fastest-node group runs as an Xray `leastPing`
+  balancer, and a manual group routes to its chosen member. Some things Xray
+  cannot do are left out of the config instead of failing it: per-app and
+  inverted rules, rule sets, and DNS-over-TLS servers.
+- iOS traffic counters now include every server in a group, and servers given
+  by IP are routed outside the tunnel so their ping is real.
+- On iOS, presets that bypass the LAN now keep private networks off the VPN
+  entirely, instead of sending them through the tunnel to be routed direct.
+  Printers, NAS boxes and the router stay reachable at full speed. Switching
+  presets while connected re-applies the routes without dropping the VPN.
+- WireGuard servers from Xray JSON subscriptions are imported, and an IPv6
+  WireGuard endpoint is written with brackets.
+
 ## [1.11.0] — 2026-10-11
 
 ### Fixed

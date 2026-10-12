@@ -166,7 +166,10 @@ enum XrayConfigBuilder {
 
     // MARK: - Outbound dispatch
 
-    private static func singleOutbound(_ cfg: ProxyConfig, tag: String) -> [String: Any] {
+    /// One server as an Xray outbound under the given tag. Exposed so a
+    /// profile with many outbounds, and the node inspector, render a node
+    /// exactly the way a single-server config does.
+    static func outbound(_ cfg: ProxyConfig, tag: String) -> [String: Any] {
         var out: [String: Any]
         switch cfg.proto {
         case .vless:        out = vlessOutbound(cfg)
@@ -189,9 +192,9 @@ enum XrayConfigBuilder {
     /// outbound per node (`proxy-0`, `proxy-1`, …) so the routing balancer can
     /// distribute traffic across them.
     private static func outbounds(for cfg: ProxyConfig) -> [[String: Any]] {
-        guard cfg.isBalancer else { return [singleOutbound(cfg, tag: "proxy")] }
+        guard cfg.isBalancer else { return [outbound(cfg, tag: "proxy")] }
         let nodes = [cfg] + (cfg.alternates ?? [])
-        return nodes.enumerated().map { singleOutbound($1, tag: "proxy-\($0)") }
+        return nodes.enumerated().map { outbound($1, tag: "proxy-\($0)") }
     }
 
     // No `mux` block is emitted, and that is deliberate.
@@ -276,8 +279,11 @@ enum XrayConfigBuilder {
     /// the only core; macOS routes WireGuard through sing-box instead.
     private static func wireguardOutbound(_ cfg: ProxyConfig) -> [String: Any] {
         var peer: [String: Any] = [
-            "endpoint": "\(cfg.address):\(cfg.port)",
+            // An IPv6 literal has to be bracketed or the port is misread.
+            "endpoint": cfg.address.contains(":")
+                ? "[\(cfg.address)]:\(cfg.port)" : "\(cfg.address):\(cfg.port)",
             "publicKey": cfg.peerPublicKey ?? "",
+            "allowedIPs": cfg.effectiveAllowedIPs,
             "keepAlive": 25
         ]
         if let psk = cfg.presharedKey, !psk.isEmpty { peer["preSharedKey"] = psk }

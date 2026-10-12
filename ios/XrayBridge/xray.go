@@ -12,15 +12,20 @@ package xray
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 
+	"github.com/xtls/xray-core/app/observatory"
 	"github.com/xtls/xray-core/common/platform"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/features/extension"
 	"github.com/xtls/xray-core/features/stats"
 	"github.com/xtls/xray-core/infra/conf/serial"
 
@@ -130,6 +135,85 @@ func Uplink() int64 {
 // Downlink returns the bytes received through the "proxy" outbound since start.
 func Downlink() int64 {
 	return counter("outbound>>>proxy>>>traffic>>>downlink")
+}
+
+// UplinkTotal returns the bytes sent through every outbound that carries user
+// traffic. A profile with rules and groups has one outbound per server, so the
+// single "proxy" counter no longer sees everything; direct, block and the DNS
+// outbound are left out because they never reach a server.
+func UplinkTotal() int64 {
+	return sum("uplink")
+}
+
+// DownlinkTotal is UplinkTotal's counterpart for received bytes.
+func DownlinkTotal() int64 {
+	return sum("downlink")
+}
+
+var auxiliaryOutbounds = map[string]bool{"direct": true, "block": true, "dns-out": true}
+
+type counterVisitor interface {
+	VisitCounters(func(string, stats.Counter) bool)
+}
+
+func sum(direction string) int64 {
+	mu.Lock()
+	manager := counters
+	mu.Unlock()
+	visitor, ok := manager.(counterVisitor)
+	if !ok {
+		return 0
+	}
+	var total int64
+	visitor.VisitCounters(func(name string, c stats.Counter) bool {
+		// outbound>>>TAG>>>traffic>>>uplink
+		parts := strings.Split(name, ">>>")
+		if len(parts) == 4 && parts[0] == "outbound" && parts[3] == direction &&
+			!auxiliaryOutbounds[parts[1]] {
+			total += c.Value()
+		}
+		return true
+	})
+	return total
+}
+
+// Observation reports what the observatory last measured, as JSON:
+// [{"tag": "...", "alive": true, "delay": 123}, ...]. Empty when the profile
+// has no balancer to feed.
+func Observation() string {
+	mu.Lock()
+	inst := instance
+	mu.Unlock()
+	if inst == nil {
+		return "[]"
+	}
+	feature, ok := inst.GetFeature(extension.ObservatoryType()).(extension.Observatory)
+	if !ok || feature == nil {
+		return "[]"
+	}
+	message, err := feature.GetObservation(context.Background())
+	if err != nil {
+		return "[]"
+	}
+	result, ok := message.(*observatory.ObservationResult)
+	if !ok {
+		return "[]"
+	}
+	type entry struct {
+		Tag   string `json:"tag"`
+		Alive bool   `json:"alive"`
+		Delay int64  `json:"delay"`
+	}
+	entries := make([]entry, 0, len(result.GetStatus()))
+	for _, status := range result.GetStatus() {
+		entries = append(entries, entry{Tag: status.GetOutboundTag(),
+			Alive: status.GetAlive(), Delay: status.GetDelay()})
+	}
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
 }
 
 func counter(name string) int64 {

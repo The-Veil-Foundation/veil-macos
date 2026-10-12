@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// The server list: the connect control on top, then every source, group and
+/// node, arranged and narrowed the way the user asked.
+///
+/// What is shown is decided by `ServerListBuilder` — the same function the Mac
+/// uses — so the two apps cannot disagree about order, grouping or filtering.
 struct ContentView: View {
     @Environment(ServerStore.self) private var store
     @Environment(TunnelController.self) private var tunnel
@@ -7,45 +12,111 @@ struct ContentView: View {
     @Environment(Loc.self) private var loc
 
     @State private var showAddSheet = false
-    @State private var showSettings = false
     @State private var showLog = false
+    @State private var showFilters = false
     @State private var isRefreshing = false
     @State private var searchText = ""
     @State private var aliveOnly = false
     @State private var sortByPing = false
+    @State private var selectedTags: Set<String> = []
+    @State private var selectedCountries: Set<String> = []
+    @State private var selectedProtocols: Set<ProxyProtocol> = []
+    /// Drives edit mode by hand instead of using `EditButton`: system controls
+    /// draw their own title from the *device* language, which would ignore the
+    /// language picked in this app's settings.
+    @State private var isArranging = false
+
     @State private var qrServer: ProxyConfig?
+    @State private var annotating: ProxyConfig?
+    @State private var inspecting: ProxyConfig?
+    @State private var groupDetail: ServerGroup?
+
+    private var filter: ListFilter {
+        var filter = ListFilter()
+        filter.search = searchText
+        filter.aliveOnly = aliveOnly
+        filter.sortByPing = sortByPing
+        filter.tags = Array(selectedTags)
+        filter.countries = Array(selectedCountries)
+        filter.protocols = Array(selectedProtocols)
+        filter.showHidden = store.settings.showHiddenNodes
+        let results = pinger.results
+        filter.latency = { id in results[id] ?? nil }
+        return filter
+    }
+
+    private var activeFilterCount: Int {
+        selectedTags.count + selectedCountries.count + selectedProtocols.count
+            + (aliveOnly ? 1 : 0)
+    }
 
     var body: some View {
+        let sections = store.listSections(filter: filter)
+
         NavigationStack {
             List {
-                Section { StatusCard() .listRowInsets(EdgeInsets()) }
+                Section { StatusCard().listRowInsets(EdgeInsets()) }
 
-                if !store.allServers.isEmpty {
-                    Section { filterRow }
-                }
-
-                if store.subscriptions.isEmpty {
+                if store.subscriptions.isEmpty && store.settings.serverGroups.isEmpty {
                     Section { emptyState }
+                } else if sections.isEmpty {
+                    Section {
+                        Text(loc("Nothing matches the current filters."))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 } else {
-                    ForEach(store.subscriptions) { sub in
-                        SubscriptionSection(subscription: sub,
-                                            searchText: searchText,
-                                            aliveOnly: aliveOnly,
-                                            sortByPing: sortByPing,
-                                            qrServer: $qrServer)
+                    ForEach(sections) { section in
+                        ServerSectionView(section: section,
+                                          isArranging: isArranging,
+                                          qrServer: $qrServer,
+                                          annotating: $annotating,
+                                          inspecting: $inspecting,
+                                          groupDetail: $groupDetail)
                     }
                 }
             }
             .listStyle(.insetGrouped)
+            // The default gap between inset sections is sized for settings
+            // screens; between a list's cards it reads as empty space.
+            .listSectionSpacing(12)
+            .contentMargins(.top, 8, for: .scrollContent)
+            .environment(\.editMode, .constant(isArranging ? .active : .inactive))
             .navigationTitle("Veil")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: loc("Search servers…"))
-            .refreshable { await refreshAll() }
+            // Pinned open. The automatic drawer collapses and re-expands as
+            // the list is pulled, which jumps the field on pull-to-refresh.
+            .searchable(text: $searchText,
+                        placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: loc("Search servers…"))
+            // Pull-to-refresh draws its own spinner. Flipping `isRefreshing`
+            // here would also swap the toolbar button mid-drag, which makes
+            // the navigation bar relayout under the finger.
+            .refreshable { await SubscriptionService.refreshAll(store) }
             .toolbar { toolbarContent }
             .sheet(isPresented: $showAddSheet) { AddView() }
-            .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showLog) { LogView() }
+            .sheet(isPresented: $showFilters) {
+                FilterSheet(aliveOnly: $aliveOnly,
+                            sortByPing: $sortByPing,
+                            selectedTags: $selectedTags,
+                            selectedCountries: $selectedCountries,
+                            selectedProtocols: $selectedProtocols)
+            }
             .sheet(item: $qrServer) { QRDisplayView(server: $0) }
+            .sheet(item: $annotating) { NodeAnnotationView(server: $0) }
+            .sheet(item: $inspecting) { server in
+                NodeEditorView(server: server,
+                               isEditable: store.subscriptionContaining(serverID: server.id)?.isManual == true)
+            }
+            .sheet(item: $groupDetail) { GroupMembersView(group: $0) }
+            // A filter whose chips are gone would narrow the list invisibly.
+            .onChange(of: store.settings.listGrouping) { _, _ in store.save() }
+            .onChange(of: sortByPing) { _, on in if on { pingAllIfUntested() } }
+            .onChange(of: aliveOnly) { _, on in if on { pingAllIfUntested() } }
+            .onChange(of: store.settings.autoTags) { _, on in
+                if !on { selectedCountries = []; selectedTags = [] }
+            }
         }
     }
 
@@ -59,35 +130,47 @@ struct ContentView: View {
             }
             .accessibilityLabel(loc("Add"))
         }
+        if !isArranging && !store.allServers.isEmpty {
+            ToolbarItem(placement: .topBarTrailing) { viewMenu }
+        }
         ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button {
-                    Task { await refreshAll() }
+            if isArranging {
+                Button(loc("Done")) { withAnimation { isArranging = false } }
+                    .fontWeight(.semibold)
+            } else {
+                Menu {
+                    Button {
+                        Task { await refreshAll() }
+                    } label: {
+                        Label(loc("Refresh"), systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isRefreshing)
+
+                    Button {
+                        pinger.test(store.allServers)
+                    } label: {
+                        Label(loc("Test Ping"), systemImage: "speedometer")
+                    }
+                    .disabled(store.allServers.isEmpty)
+
+                    Button {
+                        withAnimation { isArranging = true }
+                    } label: {
+                        Label(loc("Arrange"), systemImage: "arrow.up.arrow.down")
+                    }
+                    .disabled(store.allServers.isEmpty)
+
+                    Divider()
+
+                    Button { showLog = true } label: {
+                        Label(loc("Log"), systemImage: "text.alignleft")
+                    }
                 } label: {
-                    Label(loc("Refresh"), systemImage: "arrow.clockwise")
-                }
-                .disabled(isRefreshing)
-
-                Button {
-                    pinger.test(store.allServers)
-                } label: {
-                    Label(loc("Test Ping"), systemImage: "speedometer")
-                }
-                .disabled(store.allServers.isEmpty)
-
-                Divider()
-
-                Button { showLog = true } label: {
-                    Label(loc("Log"), systemImage: "text.alignleft")
-                }
-                Button { showSettings = true } label: {
-                    Label(loc("Settings"), systemImage: "gearshape")
-                }
-            } label: {
-                if isRefreshing {
-                    ProgressView()
-                } else {
-                    Image(systemName: "ellipsis.circle")
+                    if isRefreshing {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
         }
@@ -95,33 +178,43 @@ struct ContentView: View {
 
     // MARK: - Pieces
 
-    private var filterRow: some View {
-        HStack(spacing: 10) {
-            Toggle(loc("Alive"), isOn: $aliveOnly)
-                .toggleStyle(.button)
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            Toggle(loc("By ping"), isOn: $sortByPing)
-                .toggleStyle(.button)
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            Spacer()
-            Button {
-                pinger.test(store.allServers)
-            } label: {
-                // An HStack rather than a Label: the button style lays a Label
-                // out on a fixed icon column, which leaves a gap here.
-                HStack(spacing: 5) {
-                    Image(systemName: "speedometer")
-                    Text(loc("Test Ping"))
+    /// How the list is divided up, and what narrows it. Both answer the same
+    /// question — what am I looking at — and neither belongs in Settings. One
+    /// system menu in the bar, the way Mail and Files do it, rather than a row
+    /// of home-made buttons over the list.
+    private var viewMenu: some View {
+        @Bindable var store = store
+        let narrowed = activeFilterCount > 0 || sortByPing
+        return Menu {
+            Picker(selection: $store.settings.listGrouping) {
+                ForEach(ListGrouping.allCases) { grouping in
+                    Label(loc(grouping.title), systemImage: grouping.icon).tag(grouping)
                 }
-                .font(.footnote)
+            } label: {
+                Label(loc("Group by"), systemImage: store.settings.listGrouping.icon)
             }
-            .buttonStyle(.bordered)
-            .disabled(store.allServers.isEmpty)
+            .pickerStyle(.menu)
+
+            Toggle(isOn: $sortByPing) {
+                Label(loc("By ping"), systemImage: "arrow.up.arrow.down")
+            }
+
+            Divider()
+
+            Button {
+                showFilters = true
+            } label: {
+                Label(activeFilterCount > 0
+                      ? "\(loc("Filters")): \(activeFilterCount)"
+                      : loc("Filters"),
+                      systemImage: "slider.horizontal.3")
+            }
+        } label: {
+            Image(systemName: narrowed
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
         }
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+        .accessibilityLabel(loc("Filters"))
     }
 
     private var emptyState: some View {
@@ -158,30 +251,308 @@ struct ContentView: View {
         isRefreshing = false
     }
 
-    /// Shared filter/sort so every list on screen agrees on the ordering.
-    static func filterServers(_ servers: [ProxyConfig], search: String,
-                              aliveOnly: Bool, sortByPing: Bool,
-                              pinger: PingTester) -> [ProxyConfig] {
-        var list = servers
-        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
-        if !q.isEmpty {
-            list = list.filter { $0.name.lowercased().contains(q)
-                || $0.address.lowercased().contains(q) }
-        }
-        if aliveOnly {
-            list = list.filter {
-                if let outer = pinger.latency(for: $0.id), outer != nil { return true }
-                return false
+    /// Measures every server, unless a measurement is already there or running.
+    /// Both list filters are meaningless without one.
+    private func pingAllIfUntested() {
+        guard !pinger.hasResults, !pinger.isBusy else { return }
+        pinger.test(store.allServers)
+    }
+}
+
+// MARK: - One section
+
+/// One section of the list. Under subscription grouping it is a source, with
+/// the source's traffic, expiry and actions in its first row; under the other
+/// groupings it is a facet — a country or a tag — and the header is a name and
+/// a count.
+struct ServerSectionView: View {
+    @Environment(ServerStore.self) private var store
+    @Environment(TunnelController.self) private var tunnel
+    @Environment(PingTester.self) private var pinger
+    @Environment(Loc.self) private var loc
+    @Environment(MenuBackdrop.self) private var backdrop
+
+    let section: ListSection
+    var isArranging: Bool
+    @Binding var qrServer: ProxyConfig?
+    @Binding var annotating: ProxyConfig?
+    @Binding var inspecting: ProxyConfig?
+    @Binding var groupDetail: ServerGroup?
+
+    /// The width a row's content gets, so a long-press preview can be drawn
+    /// as wide as the row it lifts out of.
+    @State private var rowWidth: CGFloat = 0
+
+    private var subscription: Subscription? {
+        guard let id = section.subscriptionID else { return nil }
+        return store.subscriptions.first { $0.id == id }
+    }
+
+    var body: some View {
+        // The heading is the section's first *row*, not its header, so it
+        // shares the one rounded card the list draws around a section instead
+        // of floating on its own slab next to it.
+        Section {
+            if let subscription {
+                SubscriptionHeaderRow(subscription: subscription,
+                                      count: section.servers.count + section.groups.count)
+            } else {
+                facetHeader
+            }
+            if !section.isCollapsed {
+                ForEach(section.groups) { group in
+                    groupRow(group)
+                }
+                ForEach(section.servers) { server in
+                    serverRow(server)
+                }
+                .onMove(perform: mover)
+                if section.hiddenCount > 0 && !isArranging {
+                    hiddenFooter
+                }
             }
         }
-        if sortByPing {
-            list.sort { a, b in
-                let la = (pinger.latency(for: a.id) ?? nil) ?? Int.max
-                let lb = (pinger.latency(for: b.id) ?? nil) ?? Int.max
-                return la < lb
+    }
+
+    /// Only while arranging: a list that can always be dragged steals the
+    /// long press the context menu lives on.
+    private var mover: ((IndexSet, Int) -> Void)? {
+        guard isArranging else { return nil }
+        return { source, destination in move(from: source, to: destination) }
+    }
+
+    private var facetHeader: some View {
+        HStack(spacing: 8) {
+            if section.subscriptionID == ServerStore.ownGroupsSourceID {
+                Image(systemName: "square.stack.3d.up").foregroundStyle(.secondary)
+            }
+            Text(loc(section.title))
+                .font(.headline)
+                .lineLimit(1)
+            Text(verbatim: "\(section.servers.count + section.groups.count)")
+                .font(.caption2)
+                .padding(.horizontal, 6).padding(.vertical, 1)
+                .background(Capsule().fill(Color.secondary.opacity(0.18)))
+            Spacer()
+            if !section.servers.isEmpty {
+                Button {
+                    pinger.test(section.servers)
+                } label: {
+                    Image(systemName: "speedometer")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(loc("Test ping (group)"))
             }
         }
-        return list
+        .padding(.vertical, 4)
+    }
+
+    // MARK: Group rows
+
+    private func groupRow(_ row: ProxyConfig) -> some View {
+        let group = store.group(withID: row.id)
+        let isActive = tunnel.isConnected && tunnel.activeServerID == row.id
+        let content = ServerRow(server: row,
+                                isSelected: store.selectedServerID == row.id,
+                                isActive: isActive,
+                                latency: nil,
+                                isTesting: false,
+                                group: group,
+                                via: isActive ? favouredMember(group) : nil)
+        return content
+            .contentShape(Rectangle())
+            .background(widthReader)
+            .onTapGesture { if !isArranging { handleTap(row.id) } }
+            .contextMenu {
+                Button(tunnel.isConnected ? loc("Switch here") : loc("Connect"),
+                       systemImage: "bolt.fill") {
+                    store.select(row.id)
+                    Task { await tunnel.connect(to: row.id, store: store) }
+                }
+                .disabled(!store.canRun(row.id))
+                if let group {
+                    Button(loc("Members and latency"), systemImage: "list.bullet") {
+                        groupDetail = group
+                    }
+                    // A group has no latency of its own: it is whichever member
+                    // the core finds quickest, so the useful measurement is theirs.
+                    Button(loc("Test ping"), systemImage: "speedometer") {
+                        pinger.test(store.members(of: group))
+                    }
+                    if store.isOwnGroup(group.id) {
+                        Divider()
+                        Button(loc("Delete group"), systemImage: "trash", role: .destructive) {
+                            // By value: reading the row's own binding inside the
+                            // removal traps with an exclusivity conflict.
+                            let id = group.id
+                            store.removeGroup(id: id)
+                        }
+                    }
+                }
+            } preview: {
+                previewCard(content)
+            }
+    }
+
+    /// The member a "fastest" group's probes put first.
+    private func favouredMember(_ group: ServerGroup?) -> String? {
+        guard let group, group.kind == .urltest else { return nil }
+        let measured = store.members(of: group).compactMap { member -> (String, Int64)? in
+            guard let seen = tunnel.observed(member.id), seen.alive else { return nil }
+            return (store.annotation(for: member.id).nameOverride ?? member.name, seen.delay)
+        }
+        guard let best = measured.min(by: { $0.1 < $1.1 }) else { return nil }
+        return "\(best.0) · \(best.1) ms"
+    }
+
+    // MARK: Server rows
+
+    private func serverRow(_ server: ProxyConfig) -> some View {
+        let isActive = tunnel.isConnected && tunnel.activeServerID == server.id
+        let annotation = store.annotation(for: server.id)
+        let isManual = store.subscriptionContaining(serverID: server.id)?.isManual == true
+
+        let content = ServerRow(server: server,
+                                isSelected: store.selectedServerID == server.id,
+                                isActive: isActive,
+                                latency: pinger.latency(for: server.id),
+                                isTesting: pinger.isTesting(server.id),
+                                annotation: annotation,
+                                autoTags: store.settings.autoTags)
+        return content
+            .contentShape(Rectangle())
+            .background(widthReader)
+            .onTapGesture { if !isArranging { handleTap(server.id) } }
+            .contextMenu {
+                Button(tunnel.isConnected ? loc("Switch here") : loc("Connect"),
+                       systemImage: "bolt.fill") {
+                    store.select(server.id)
+                    Task { await tunnel.connect(to: server.id, store: store) }
+                }
+                .disabled(!server.xraySupported)
+                Button(loc("Test ping"), systemImage: "speedometer") { pinger.test([server]) }
+                Divider()
+                Button(annotation.pinned ? loc("Unpin") : loc("Pin"),
+                       systemImage: annotation.pinned ? "pin.slash" : "pin") {
+                    store.togglePinned(serverID: server.id)
+                }
+                Button(annotation.hidden ? loc("Unhide") : loc("Hide"),
+                       systemImage: annotation.hidden ? "eye" : "eye.slash") {
+                    store.setHidden(!annotation.hidden, serverID: server.id)
+                }
+                Button(loc("Rename and tag…"), systemImage: "tag") { annotating = server }
+                if annotation.sortIndex != nil {
+                    Button(loc("Reset manual order"), systemImage: "arrow.uturn.backward") {
+                        store.clearManualOrder(section: section.servers.map(\.id))
+                    }
+                }
+                Divider()
+                Button(isManual ? loc("Edit") : loc("Inspect"),
+                       systemImage: "curlybraces") { inspecting = server }
+                Button(loc("Copy link"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = LinkBuilder.link(for: server)
+                }
+                Button(loc("Show QR code"), systemImage: "qrcode") { qrServer = server }
+                if isManual && !isActive {
+                    Divider()
+                    Button(loc("Delete"), systemImage: "trash", role: .destructive) {
+                        let id = server.id
+                        store.removeServer(id: id)
+                    }
+                }
+            } preview: {
+                previewCard(content)
+            }
+            .swipeActions(edge: .leading) {
+                Button {
+                    store.togglePinned(serverID: server.id)
+                } label: {
+                    Label(annotation.pinned ? loc("Unpin") : loc("Pin"),
+                          systemImage: annotation.pinned ? "pin.slash" : "pin")
+                }
+                .tint(.orange)
+            }
+            .swipeActions(edge: .trailing) {
+                if isManual && !isActive {
+                    Button(role: .destructive) {
+                        let id = server.id
+                        store.removeServer(id: id)
+                    } label: {
+                        Label(loc("Delete"), systemImage: "trash")
+                    }
+                }
+                Button {
+                    store.setHidden(!annotation.hidden, serverID: server.id)
+                } label: {
+                    Label(annotation.hidden ? loc("Unhide") : loc("Hide"),
+                          systemImage: annotation.hidden ? "eye" : "eye.slash")
+                }
+                .tint(.gray)
+            }
+    }
+
+    // MARK: Long-press preview
+
+    /// Left to itself the menu lifts the bare row content: cut flush to the
+    /// text, square-cornered, and on iOS 26 over an unblurred list. A preview
+    /// of its own is a padded, rounded card, and gets the blurred backdrop.
+    private func previewCard(_ content: some View) -> some View {
+        content
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(width: rowWidth > 0 ? rowWidth + 32 : nil, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground))
+            // The preview is hosted outside the list and inherits none of its
+            // observable objects; a row reading one there traps.
+            .environment(loc)
+            .environment(store)
+            .environment(tunnel)
+            .environment(pinger)
+            .liftsMenuBackdrop(backdrop)
+    }
+
+    private var widthReader: some View {
+        GeometryReader { geometry in
+            Color.clear
+                .onAppear { rowWidth = geometry.size.width }
+                .onChange(of: geometry.size.width) { _, width in rowWidth = width }
+        }
+    }
+
+    private var hiddenFooter: some View {
+        Button {
+            store.settings.showHiddenNodes.toggle()
+            store.save()
+        } label: {
+            Label(store.settings.showHiddenNodes
+                  ? loc("Hide hidden servers")
+                  : String(format: loc("%d hidden"), section.hiddenCount),
+                  systemImage: store.settings.showHiddenNodes ? "eye.slash" : "eye")
+                .font(.caption)
+        }
+        .foregroundStyle(.secondary)
+    }
+
+    // MARK: Actions
+
+    /// Records the order a drag left the section in. Dragging works inside a
+    /// section only: under tag or country grouping a node's section is decided
+    /// by what it is, so moving it elsewhere would mean nothing.
+    private func move(from source: IndexSet, to destination: Int) {
+        var order = section.servers.map(\.id)
+        let moving = source.map { order[$0] }
+        let insertAt = destination - source.filter { $0 < destination }.count
+        for index in source.sorted(by: >) { order.remove(at: index) }
+        order.insert(contentsOf: moving, at: max(0, min(insertAt, order.count)))
+        store.reorder(section: order)
+    }
+
+    /// Disconnected: tap selects. Connected: tap switches straight away, which
+    /// only restarts the core inside the extension — the tunnel never drops.
+    private func handleTap(_ id: UUID) {
+        store.select(id)
+        guard tunnel.isConnected, store.canRun(id) else { return }
+        Task { await tunnel.connect(to: id, store: store) }
     }
 }
 
@@ -197,7 +568,8 @@ struct StatusCard: View {
     @State private var holdProgress: CGFloat = 0
     @State private var isHolding = false
 
-    private var selected: ProxyConfig? { store.server(withID: store.selectedServerID) }
+    private var selectedID: UUID? { store.selectedServerID }
+    private var selected: ProxyConfig? { store.server(withID: selectedID) }
 
     var body: some View {
         // Kept compact on purpose: this sits above the server list, and every
@@ -219,15 +591,34 @@ struct StatusCard: View {
                 HStack(spacing: 20) {
                     trafficLabel(icon: "arrow.up", bytes: tunnel.uplinkBytes)
                     trafficLabel(icon: "arrow.down", bytes: tunnel.downlinkBytes)
-                    Label(tunnel.uptimeText, systemImage: "clock")
+                    if let since = tunnel.connectedSince {
+                        // Drawn by the system from the start time; nothing in
+                        // the app ticks to keep it current.
+                        Label {
+                            Text(since, style: .timer)
+                        } icon: {
+                            Image(systemName: "clock")
+                        }
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                    }
                 }
             }
 
-            Text(holdHint)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            if tunnel.hasUnappliedChanges(store: store) {
+                Button {
+                    Task { await tunnel.applyChanges(store: store) }
+                } label: {
+                    Label(loc("Apply now"), systemImage: "arrow.clockwise.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+            } else {
+                Text(holdHint)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
@@ -268,16 +659,18 @@ struct StatusCard: View {
             }
         }
         .accessibilityLabel(holdHint)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { toggle() }
     }
 
     private static let holdDuration: TimeInterval = 0.6
 
-    /// False while a connect is already in flight, or when the selected server
-    /// is one the Xray-only build cannot run.
+    /// False while a connect is already in flight, or when the selection is
+    /// one the Xray-only build cannot run.
     private var canToggle: Bool {
         if tunnel.isConnected { return true }
         guard tunnel.state != .connecting else { return false }
-        return selected?.xraySupported ?? false
+        return store.canRun(selectedID)
     }
 
     private var holdHint: String {
@@ -291,8 +684,8 @@ struct StatusCard: View {
         isHolding = false
         if tunnel.isConnected {
             tunnel.disconnect()
-        } else if let server = selected {
-            Task { await tunnel.connect(to: server, settings: store.settings) }
+        } else if let id = selectedID {
+            Task { await tunnel.connect(to: id, store: store) }
         }
     }
 
@@ -312,12 +705,13 @@ struct StatusCard: View {
     }
 
     private var subtitle: String {
-        if case .failed(let message) = tunnel.state { return message }
+        if case .failed(let message) = tunnel.state { return loc(message) }
         if tunnel.isConnected { return tunnel.activeServerName }
         if let selected {
-            return selected.xraySupported
-                ? selected.name
-                : "\(selected.name) — \(loc("not supported on iOS"))"
+            let name = store.annotation(for: selected.id).nameOverride ?? selected.name
+            return store.canRun(selected.id)
+                ? name
+                : "\(name) — \(loc("not supported on iOS"))"
         }
         return loc("Select a server")
     }
@@ -329,226 +723,5 @@ struct StatusCard: View {
         case .failed:       return .red
         case .disconnected: return .secondary
         }
-    }
-}
-
-// MARK: - Subscription section
-
-struct SubscriptionSection: View {
-    @Environment(ServerStore.self) private var store
-    @Environment(TunnelController.self) private var tunnel
-    @Environment(PingTester.self) private var pinger
-    @Environment(Loc.self) private var loc
-
-    let subscription: Subscription
-    let searchText: String
-    let aliveOnly: Bool
-    let sortByPing: Bool
-    @Binding var qrServer: ProxyConfig?
-
-    private var visibleServers: [ProxyConfig] {
-        ContentView.filterServers(subscription.servers, search: searchText,
-                                  aliveOnly: aliveOnly, sortByPing: sortByPing,
-                                  pinger: pinger)
-    }
-
-    /// Hide a group that an active filter has emptied out.
-    private var isHidden: Bool {
-        (!searchText.isEmpty || aliveOnly) && visibleServers.isEmpty
-    }
-
-    var body: some View {
-        if !isHidden {
-            // The heading is the section's first *row*, not its header, so it
-            // shares the one rounded card the list draws around a section
-            // instead of floating on its own slab next to it.
-            Section {
-                header
-                if !subscription.isCollapsed {
-                    ForEach(visibleServers) { server in
-                        row(for: server)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func row(for server: ProxyConfig) -> some View {
-        let isActive = tunnel.activeServerID == server.id && tunnel.isConnected
-        ServerRow(server: server,
-                  isSelected: store.selectedServerID == server.id,
-                  isActive: isActive,
-                  latency: pinger.latency(for: server.id),
-                  isTesting: pinger.isTesting(server.id))
-            .contentShape(Rectangle())
-            .onTapGesture { handleTap(server) }
-            .contextMenu {
-                Button(tunnel.isConnected ? loc("Switch here") : loc("Connect")) {
-                    store.select(server.id)
-                    Task { await tunnel.connect(to: server, settings: store.settings) }
-                }
-                .disabled(!server.xraySupported)
-                Button(loc("Test ping")) { pinger.test([server]) }
-                Divider()
-                Button(loc("Copy link")) {
-                    UIPasteboard.general.string = LinkBuilder.link(for: server)
-                }
-                Button(loc("Show QR code")) { qrServer = server }
-            }
-            .swipeActions(edge: .trailing) {
-                if subscription.isManual && !isActive {
-                    Button(role: .destructive) {
-                        store.removeServer(id: server.id)
-                    } label: {
-                        Label(loc("Delete"), systemImage: "trash")
-                    }
-                }
-            }
-    }
-
-    /// Name, note, traffic and expiry sit above the servers: a description
-    /// under the last row reads as if it belonged to that row.
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            titleRow
-            details
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-
-    private var titleRow: some View {
-        HStack(spacing: 8) {
-            // Tapping anywhere across the name collapses the group, but the
-            // menu keeps its own hit area.
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    // Rotating one glyph animates; swapping two would not.
-                    .rotationEffect(.degrees(subscription.isCollapsed ? -90 : 0))
-                    .frame(width: 20)
-
-                Text(subscription.name)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text("\(subscription.servers.count)")
-                    .font(.caption2)
-                    .padding(.horizontal, 6).padding(.vertical, 1)
-                    .background(Capsule().fill(Color.secondary.opacity(0.18)))
-
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { toggleCollapsed() }
-
-            Menu {
-                Button(loc("Test ping")) { pinger.test(subscription.servers) }
-                if !subscription.isManual {
-                    Divider()
-                    Button(loc("Refresh now")) {
-                        Task { await SubscriptionService.refresh(subscription, into: store) }
-                    }
-                    Toggle(loc("Auto-update"), isOn: Binding(
-                        get: { subscription.autoUpdate },
-                        set: { store.setAutoUpdate($0, id: subscription.id) }
-                    ))
-                    Divider()
-                    let holdsActive = tunnel.isConnected
-                        && subscription.servers.contains { $0.id == tunnel.activeServerID }
-                    Button(loc("Remove"), role: .destructive) {
-                        store.removeSubscription(id: subscription.id)
-                    }
-                    .disabled(holdsActive)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-        }
-    }
-
-    /// Shown in full. Providers pad the Announce header with runs of blank
-    /// lines; those collapse to a single break so the paragraphs survive
-    /// without the dead space between them.
-    private var noteText: String {
-        let lines = (subscription.note ?? "")
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-
-        var kept: [String] = []
-        for line in lines {
-            // Drops leading blanks and every repeat of one.
-            if line.isEmpty && (kept.last?.isEmpty ?? true) { continue }
-            kept.append(line)
-        }
-        while kept.last?.isEmpty == true { kept.removeLast() }
-        return kept.joined(separator: "\n")
-    }
-
-    @ViewBuilder
-    private var details: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !noteText.isEmpty {
-                Text(noteText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-
-            if let used = subscription.usedBytes, let total = subscription.totalBytes {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Text("\(ByteFormat.string(used)) / \(ByteFormat.string(total))")
-                            .monospacedDigit()
-                        Spacer(minLength: 8)
-                        if let expiry = subscription.expiresAt {
-                            Text(expiry.formatted(date: .abbreviated, time: .omitted))
-                        }
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                    if let fraction = subscription.usageFraction {
-                        usageBar(fraction)
-                    }
-                }
-            } else if let expiry = subscription.expiresAt {
-                Text("\(loc("Expires")) \(expiry.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    /// Hand-drawn rather than a `ProgressView`, whose bar is too tall and too
-    /// loud for a line of metadata.
-    private func usageBar(_ fraction: Double) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.secondary.opacity(0.18))
-                Capsule()
-                    .fill(fraction > 0.9 ? Color.red : Color.accentColor)
-                    .frame(width: max(3, geometry.size.width * fraction))
-            }
-        }
-        .frame(height: 4)
-    }
-
-    private func toggleCollapsed() {
-        withAnimation(.snappy(duration: 0.28)) {
-            store.toggleCollapsed(id: subscription.id)
-        }
-    }
-
-    /// Disconnected: tap selects. Connected: tap switches straight away, which
-    /// only restarts the core inside the extension — the tunnel never drops.
-    private func handleTap(_ server: ProxyConfig) {
-        store.select(server.id)
-        guard tunnel.isConnected else { return }
-        Task { await tunnel.connect(to: server, settings: store.settings) }
     }
 }

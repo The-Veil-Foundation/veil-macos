@@ -340,6 +340,16 @@ enum RoutingPreset: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// Whether the preset sends private ranges straight out. On iOS those
+    /// ranges are then kept off the tunnel altogether, not just routed direct
+    /// by the core once they are inside it.
+    var bypassesLAN: Bool {
+        switch self {
+        case .bypassLAN, .bypassChina, .bypassRussia: return true
+        case .global, .custom: return false
+        }
+    }
+
     static let privateCIDRs = [
         "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
         "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"

@@ -112,7 +112,7 @@ struct AddView: View {
     @ViewBuilder
     private var detectionFooter: some View {
         switch input {
-        case .servers(let servers):
+        case .servers(let servers, _):
             // Never interpolate a count into a translated noun — plural forms
             // differ per language. "Label: N" reads correctly everywhere.
             Label(servers.count == 1
@@ -156,8 +156,8 @@ struct AddView: View {
     private func commit() async {
         errorMessage = nil
         switch input {
-        case .servers(let servers):
-            store.addManualServers(servers)
+        case .servers(let servers, let groups):
+            store.addManualServers(servers, groups: groups)
             dismiss()
 
         case .subscription(let url):
@@ -176,8 +176,10 @@ struct AddView: View {
                     : nameText
                 store.addOrUpdateSubscription(name: name, url: url,
                                               servers: result.servers,
+                                              groups: result.payload.groups,
                                               metadata: result.metadata,
-                                              format: result.payload.format)
+                                              format: result.payload.format,
+                                              skipped: result.payload.skipped)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

@@ -58,9 +58,12 @@ enum SubscriptionService {
     }
 
     /// Refresh every subscription regardless of staleness (manual "refresh all").
+    /// The fetches run side by side, so one slow or dead panel holds the
+    /// spinner for its own timeout rather than for everyone's in turn.
     static func refreshAll(_ store: ServerStore) async {
-        for sub in store.subscriptions where !sub.isManual {
-            await refresh(sub, into: store)
+        let tasks = store.subscriptions.filter { !$0.isManual }.map { sub in
+            Task { await refresh(sub, into: store) }
         }
+        for task in tasks { _ = await task.value }
     }
 }

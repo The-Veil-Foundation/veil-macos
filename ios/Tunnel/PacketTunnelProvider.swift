@@ -163,12 +163,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         // the interface address can never collide with the physical one.
         let ipv4 = NEIPv4Settings(addresses: ["198.18.0.1"], subnetMasks: ["255.255.255.0"])
         ipv4.includedRoutes = [NEIPv4Route.default()]
+        // The nodes themselves stay off the tunnel, so the app's latency
+        // probes measure the real path instead of the tunnel's own stack.
+        ipv4.excludedRoutes = session.excludedAddresses
+            .filter { !$0.contains(":") }
+            .map { NEIPv4Route(destinationAddress: $0, subnetMask: "255.255.255.255") }
+            + session.excludedRanges.compactMap(Self.ipv4Route)
         settings.ipv4Settings = ipv4
 
         if session.ipv6Enabled {
             let ipv6 = NEIPv6Settings(addresses: ["fd6e:a81b:704f:1211::1"],
                                       networkPrefixLengths: [64])
             ipv6.includedRoutes = [NEIPv6Route.default()]
+            ipv6.excludedRoutes = session.excludedRanges.compactMap(Self.ipv6Route)
             settings.ipv6Settings = ipv6
         }
 
@@ -179,6 +186,36 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         settings.dnsSettings = dns
 
         return settings
+    }
+
+    /// Applies the current session's routes to the running tunnel. The utun
+    /// and its descriptor survive this; only the routing table changes.
+    private func reapplyNetworkSettingsLocked() {
+        let settings = Self.makeNetworkSettings(session)
+        setTunnelNetworkSettings(settings) { [log] error in
+            if let error {
+                log.error("re-applying routes: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// `a.b.c.d/len` as a route; nil for v6 or anything malformed.
+    private static func ipv4Route(_ cidr: String) -> NEIPv4Route? {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2, !cidr.contains(":"),
+              let length = Int(parts[1]), (0...32).contains(length) else { return nil }
+        let bits: UInt32 = length == 0 ? 0 : ~UInt32(0) << (32 - length)
+        let mask = [24, 16, 8, 0].map { String((bits >> UInt32($0)) & 0xff) }.joined(separator: ".")
+        return NEIPv4Route(destinationAddress: String(parts[0]), subnetMask: mask)
+    }
+
+    /// `prefix/len` as a route; nil for v4 or anything malformed.
+    private static func ipv6Route(_ cidr: String) -> NEIPv6Route? {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2, cidr.contains(":"),
+              let length = Int(parts[1]), (0...128).contains(length) else { return nil }
+        return NEIPv6Route(destinationAddress: String(parts[0]),
+                           networkPrefixLength: NSNumber(value: length))
     }
 
     // MARK: - utun discovery
@@ -251,6 +288,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 
         let completion = UncheckedSendable(completionHandler)
         stateQueue.async { [self] in
+            var checkError: String?
             switch request.command {
             case .status:
                 break
@@ -258,24 +296,54 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                 // Server switch: same tunnel, same descriptor, new outbound.
                 restartWorkItem?.cancel()
                 restartWorkItem = nil
+                let before = session
                 restartCoreLocked(reason: "config reload")
+                // A preset that now bypasses the LAN, or a new set of nodes,
+                // changes the routes. Re-applying keeps the same utun.
+                if !session.sameNetwork(as: before) {
+                    reapplyNetworkSettingsLocked()
+                }
             case .clearLog:
                 var error: NSError?
                 XrayPrepareLog(AppGroup.logURL.path, &error)
+            case .check:
+                var error: NSError?
+                if !XrayCheckConfig(request.config ?? "", &error) {
+                    checkError = error?.localizedDescription ?? "The core refused this configuration."
+                }
             }
-            completion.value?(currentStatusLocked().encoded())
+            Self.capLog()
+            var status = currentStatusLocked(includeLog: request.includeLog)
+            status.checkError = checkError
+            completion.value?(status.encoded())
         }
     }
 
-    private func currentStatusLocked() -> TunnelStatus {
+    private func currentStatusLocked(includeLog: Bool) -> TunnelStatus {
         TunnelStatus(running: XrayIsRunning(),
                      coreVersion: XrayVersion(),
                      serverName: session.serverName,
-                     uplinkBytes: XrayUplink(),
-                     downlinkBytes: XrayDownlink(),
+                     uplinkBytes: XrayUplinkTotal(),
+                     downlinkBytes: XrayDownlinkTotal(),
                      startedAt: startedAt,
                      lastError: lastError,
-                     log: Self.logTail())
+                     log: includeLog ? Self.logTail() : "",
+                     observation: Self.observation())
+    }
+
+    /// The observatory's probe results, decoded from the bridge's JSON.
+    private static func observation() -> [ObservedOutbound] {
+        let json = XrayObservation()
+        return (try? JSONDecoder().decode([ObservedOutbound].self, from: Data(json.utf8))) ?? []
+    }
+
+    /// Keeps the log from growing without bound at debug level. The core
+    /// appends, so truncating under it simply starts the file over.
+    private static func capLog(maxBytes: UInt64 = 4 << 20) {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: AppGroup.logURL.path)
+        guard let size = attributes?[.size] as? UInt64, size > maxBytes else { return }
+        var error: NSError?
+        XrayPrepareLog(AppGroup.logURL.path, &error)
     }
 
     /// Last few KB of the core log. Provider messages travel over XPC, so we
