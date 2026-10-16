@@ -264,19 +264,43 @@ enum MatcherSyntax {
     }
 
     /// Ports as sing-box wants them: single values in `port`, ranges in
-    /// `port_range`. Accepts "443", "443,8443", "1000-2000" and mixtures.
+    /// `port_range`. Accepts "443", "443,8443", "1000-2000", "1000:2000",
+    /// open ends like ":1024" and mixtures. Ranges come out as "a:b", the only
+    /// form sing-box parses; anything it would reject is dropped here so one
+    /// bad entry cannot stop the core from starting.
     static func ports(_ text: String) -> (ports: [Int], ranges: [String]) {
         var ports: [Int] = []
         var ranges: [String] = []
         for piece in text.split(whereSeparator: { $0 == "," || $0.isWhitespace }) {
-            let token = piece.trimmingCharacters(in: .whitespaces)
-            guard !token.isEmpty else { continue }
-            if let value = Int(token) {
+            if let value = port(piece) {
                 ports.append(value)
-            } else if token.contains("-") {
-                ranges.append(token)
+            } else if let range = portRange(piece) {
+                ranges.append(range)
             }
         }
         return (ports, ranges)
+    }
+
+    private static func port(_ token: Substring) -> Int? {
+        guard !token.isEmpty, token.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let value = Int(token), (1...65535).contains(value) else { return nil }
+        return value
+    }
+
+    private static func portRange(_ token: Substring) -> String? {
+        let parts = token.split(separator: token.contains(":") ? ":" : "-",
+                                omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        let (lower, upper) = (parts[0], parts[1])
+        if lower.isEmpty && upper.isEmpty { return nil }
+        // "a-" and "-b" read as a negative number or a typo; only the colon
+        // form may leave an end open, as in sing-box itself.
+        if (lower.isEmpty || upper.isEmpty) && !token.contains(":") { return nil }
+        let low = lower.isEmpty ? nil : port(lower)
+        let high = upper.isEmpty ? nil : port(upper)
+        if !lower.isEmpty && low == nil { return nil }
+        if !upper.isEmpty && high == nil { return nil }
+        if let low, let high, low > high { return nil }
+        return "\(low.map(String.init) ?? ""):\(high.map(String.init) ?? "")"
     }
 }

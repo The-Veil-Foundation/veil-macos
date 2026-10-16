@@ -3,6 +3,16 @@
 All notable changes to Veil are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.11.1]
+
+### Fixed
+
+- A routing rule with a port range no longer stops sing-box from starting.
+  Ranges such as `1000-2000` were handed to the core as written, and sing-box
+  only accepts `1000:2000`; they are now written in that form, and `1000:2000`
+  is accepted as input too. Ports outside 1–65535, reversed ranges and entries
+  that are not numbers are dropped from the rule instead of reaching the core.
+
 ## [1.11.0] — 2026-10-11
 
 ### Fixed
