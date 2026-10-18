@@ -29,9 +29,18 @@ enum Diagnostics {
         lines.append("")
 
         lines.append("## Settings")
+        #if os(macOS)
         lines.append("mode: \(store.settings.mode.rawValue)")
         lines.append("socks port: \(store.settings.socksPort)")
         lines.append("http port: \(store.settings.httpPort)")
+        #else
+        lines.append("mode: network extension")
+        lines.append("mtu: \(store.settings.tunnelMTU)")
+        lines.append("ipv6: \(store.settings.ipv6Enabled)")
+        lines.append("dns in tunnel: \(store.settings.dns.enabled)")
+        lines.append("groups: \(store.settings.serverGroups.count)")
+        lines.append("community lists: \(store.settings.communityLists.count)")
+        #endif
         lines.append("routing preset: \(store.settings.routingPreset.rawValue)")
         lines.append("custom rules: \(store.settings.customRules.count)")
         lines.append("block ads: \(store.settings.blockAds)")

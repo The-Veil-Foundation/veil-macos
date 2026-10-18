@@ -5,8 +5,9 @@ Guidance for Claude Code (and other agents) working in this repository.
 ## What this is
 
 **Veil** — a native macOS VPN client for the Xray-core and sing-box proxy engines, written in
-SwiftUI. Swift 6, macOS 14+. There is also an iPhone/iPad app under `ios/` that shares the
-model and core layer.
+SwiftUI. Swift 6, macOS 14+. The iPhone/iPad app lives in `The-Veil-Foundation/veil-ios` and
+compiles `Sources/XrayClient/Models` and `Core` from this repository as a submodule, so keep
+those two folders building for iOS (`#if os(macOS)` around anything Mac-only).
 
 This is a **Swift Package Manager executable**, not an Xcode project. There is no `.xcodeproj`
 to open for the Mac app.
@@ -57,7 +58,7 @@ Sources/VeilHelperKit/          XPC protocol + input validation shared with the 
 Sources/VeilHelper/             the privileged launchd daemon
 Scripts/                        fetch-*, cores.lock, run-app.sh, *-daemon.sh, set-version.sh
 Tests/XrayClientTests/          parsers, link builder, config builders, security, routing
-docs/                           ios.md, website
+docs/                           website
 ```
 
 ## Rules that are easy to get wrong
@@ -166,8 +167,7 @@ git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z
 
 `release.yml` checks the tag against `VERSION`, extracts that CHANGELOG section into the
 release body, and attaches `Veil.app.zip`. `ci.yml` runs build + test on every push and PR to
-`main`. `ios.yml` is `workflow_dispatch` only — the gomobile XrayCore build takes 15–20
-minutes against ~1 for the Mac job.
+`main`.
 
 ## License
 

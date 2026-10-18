@@ -123,65 +123,24 @@ enum ProfileAssembler {
 
     // MARK: - Internals
 
-    /// Which outbound the `proxy` selector should resolve to.
-    ///
-    /// The picked id may name a group rather than a server — groups and
-    /// servers share one selection in the UI, because from the user's side
-    /// "connect to this" means the same thing either way.
+    /// Which outbound the `proxy` selector should resolve to. Shared with the
+    /// iOS builder through `OutboundGraph`.
     static func target(for id: UUID?,
                        groups: [ServerGroup],
                        servers: [ProxyConfig]) -> RuleTarget {
-        guard let id else { return .direct }
-        if groups.contains(where: { $0.id == id }) { return .group(id) }
-        if servers.contains(where: { $0.id == id }) { return .server(id) }
-        return .direct
+        OutboundGraph.target(for: id, groups: groups, servers: servers)
     }
 
     /// The user's groups and the panels' groups as one list.
-    ///
-    /// A collision can only happen if a stored group was built from a panel's
-    /// in the first place, and the user's copy is the one they edited.
     static func allGroups(_ input: Input) -> [ServerGroup] {
-        let own = input.settings.serverGroups
-        let ids = Set(own.map(\.id))
-        return own + input.subscriptionGroups.filter { !ids.contains($0.id) }
+        OutboundGraph.allGroups(own: input.settings.serverGroups,
+                                declared: input.subscriptionGroups)
     }
 
     /// Flattens balancer entries into real nodes plus a group over them.
-    ///
-    /// A subscription's balancer arrives as one `ProxyConfig` carrying its
-    /// alternates. The graph has no place for that shape: every node needs its
-    /// own tag, and "pick one of these" is what a group is for.
     static func expand(_ servers: [ProxyConfig],
                        groups: [ServerGroup]) -> (servers: [ProxyConfig], groups: [ServerGroup]) {
-        var flattened: [ProxyConfig] = []
-        var derived: [ServerGroup] = []
-
-        for server in servers {
-            guard server.isBalancer else {
-                flattened.append(server)
-                continue
-            }
-            let nodes = [strippedOfAlternates(server)] + (server.alternates ?? [])
-            flattened.append(contentsOf: nodes)
-            var group = ServerGroup(id: server.id, name: server.name,
-                                    kind: .urltest, memberIDs: nodes.map(\.id))
-            group.interval = "1m"
-            group.tolerance = 150
-            derived.append(group)
-        }
-        // A user-defined group with the same id as a derived one wins: the
-        // user configured it on purpose.
-        let userIDs = Set(groups.map(\.id))
-        return (flattened, groups + derived.filter { !userIDs.contains($0.id) })
-    }
-
-    /// The balancer's own node, without the alternates hanging off it — those
-    /// are now siblings, and leaving them attached would build the group twice.
-    private static func strippedOfAlternates(_ server: ProxyConfig) -> ProxyConfig {
-        var copy = server
-        copy.alternates = nil
-        return copy
+        OutboundGraph.expand(servers, groups: groups)
     }
 }
 #endif

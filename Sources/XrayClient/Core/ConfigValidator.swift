@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 
 /// Runs an edited configuration past the core that will execute it.
@@ -18,6 +17,7 @@ enum ConfigValidator {
         case unavailable
     }
 
+    #if os(macOS)
     static func check(_ server: ProxyConfig) async -> Outcome {
         // The cores do not mind a node with no credential in it: sing-box will
         // happily dial a Hysteria2 server with an empty password, and the
@@ -60,6 +60,8 @@ enum ConfigValidator {
         return await run(binary, arguments)
     }
 
+    #endif
+
     /// The credential this protocol cannot connect without, when it is absent.
     static func missingCredential(_ server: ProxyConfig) -> String? {
         func blank(_ value: String?) -> Bool {
@@ -79,6 +81,7 @@ enum ConfigValidator {
         }
     }
 
+    #if os(macOS)
     private static func run(_ binary: URL, _ arguments: [String]) async -> Outcome {
         await withCheckedContinuation { continuation in
             let process = Process()
@@ -108,5 +111,5 @@ enum ConfigValidator {
                 : message))
         }
     }
+    #endif
 }
-#endif

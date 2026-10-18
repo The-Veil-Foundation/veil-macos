@@ -194,7 +194,7 @@ final class CommunityListManager {
         let fm = FileManager.default
         let base = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                 appropriateFor: nil, create: true))
-            ?? fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+            ?? fm.temporaryDirectory
         let dir = base.appendingPathComponent("XrayClient/lists", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir

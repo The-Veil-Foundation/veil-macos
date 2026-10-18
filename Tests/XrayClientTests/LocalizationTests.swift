@@ -25,7 +25,6 @@ final class LocalizationTests: XCTestCase {
     /// Directories whose `loc("…")` calls must all resolve.
     private static let uiDirectories = [
         "Sources/XrayClient/Views",
-        "ios/App",
     ]
 
     func testEveryKeyHasEveryLanguage() {

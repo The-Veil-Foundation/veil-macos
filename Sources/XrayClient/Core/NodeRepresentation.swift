@@ -62,9 +62,15 @@ enum NodeRepresentation {
         case .link:
             return LinkBuilder.link(for: server)
         case .json:
+            #if os(macOS)
             let object = SingBoxOutbound.isEndpoint(server)
                 ? SingBoxOutbound.endpoint(server, tag: server.name)
                 : SingBoxOutbound.outbound(server, tag: server.name)
+            #else
+            // Xray is the only core on iOS, so the outbound shown is the one
+            // it will run.
+            let object = XrayConfigBuilder.outbound(server, tag: server.name)
+            #endif
             guard let data = try? JSONSerialization.data(
                 withJSONObject: object,
                 options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
@@ -126,7 +132,13 @@ enum NodeRepresentation {
             } else {
                 throw Failure.noNodeInJSON
             }
-            guard let first = SubscriptionPayloadParser.singBoxServers(outbounds).first else {
+            // Xray names an outbound's protocol under `protocol`, sing-box
+            // under `type`; either is accepted on either platform.
+            let isXray = outbounds.contains { $0["protocol"] != nil }
+            let nodes = isXray
+                ? SubscriptionPayloadParser.xrayServers(outbounds)
+                : SubscriptionPayloadParser.singBoxServers(outbounds)
+            guard let first = nodes.first else {
                 throw Failure.noNodeInJSON
             }
             parsed = first

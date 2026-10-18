@@ -291,7 +291,12 @@ final class ServerStore {
 
     /// Reorders the sources themselves.
     func moveSubscriptions(fromOffsets: IndexSet, toOffset: Int) {
-        subscriptions.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        // Spelled out rather than SwiftUI's `move(fromOffsets:toOffset:)`: the
+        // iOS tunnel extension compiles this file too, and links no SwiftUI.
+        let moving = fromOffsets.map { subscriptions[$0] }
+        let insertAt = toOffset - fromOffsets.filter { $0 < toOffset }.count
+        for index in fromOffsets.sorted(by: >) { subscriptions.remove(at: index) }
+        subscriptions.insert(contentsOf: moving, at: max(0, min(insertAt, subscriptions.count)))
         // Anything dragged out of the run of pinned sources at the top is no
         // longer pinned, so the badge never contradicts the order.
         for idx in subscriptions.indices where subscriptions[idx].pinned == true {

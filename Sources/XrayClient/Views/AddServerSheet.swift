@@ -144,6 +144,7 @@ struct AddServerSheet: View {
                     : nameText
                 store.addOrUpdateSubscription(name: name, url: url,
                                               servers: result.servers,
+                                              groups: result.payload.groups,
                                               metadata: result.metadata,
                                               format: result.payload.format,
                                               skipped: result.payload.skipped)
