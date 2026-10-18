@@ -172,7 +172,20 @@ final class SingBoxProfileTests: XCTestCase {
         rule.port = "443, 1000-2000, 80"
         let rendered = SingBoxProfileBuilder.routeRule(rule)
         XCTAssertEqual(rendered?["port"] as? [Int], [443, 80])
-        XCTAssertEqual(rendered?["port_range"] as? [String], ["1000-2000"])
+        // sing-box 1.14 only takes "a:b" ranges; "1000-2000" fails `check`.
+        XCTAssertEqual(rendered?["port_range"] as? [String], ["1000:2000"])
+    }
+
+    func testPortRangesAcceptBothSeparatorsAndOpenEnds() {
+        let parsed = MatcherSyntax.ports("1000-2000, 3000:4000, :1024, 50000:")
+        XCTAssertEqual(parsed.ports, [])
+        XCTAssertEqual(parsed.ranges, ["1000:2000", "3000:4000", ":1024", "50000:"])
+    }
+
+    func testInvalidPortEntriesAreDropped() {
+        let parsed = MatcherSyntax.ports("0, 443, 70000, http, 2000-1000, 10-99999, -, :, 5-x, 8080")
+        XCTAssertEqual(parsed.ports, [443, 8080])
+        XCTAssertEqual(parsed.ranges, [])
     }
 
     func testRuleWithNoMatcherIsDropped() {
@@ -346,6 +359,23 @@ final class SingBoxProfileTests: XCTestCase {
         profile.servers = [node]
         profile.defaultTarget = .server(node.id)
         profile.rules = RoutingPreset.bypassLAN.builtInRules(blockAds: true)
+        try assertCoreAccepts(profile, binary: binary)
+    }
+
+    func testProfileWithPortRangesPassesSingBoxCheck() throws {
+        guard let binary = Self.singBoxBinary else {
+            throw XCTSkip("sing-box binary not present — run Scripts/fetch-singbox.sh")
+        }
+        var profile = SingBoxProfile()
+        let node = reality("DE")
+        profile.servers = [node]
+        profile.defaultTarget = .server(node.id)
+        var destination = RoutingRule(name: "Games direct", target: .direct)
+        destination.port = "443, 1000-2000, 3000:4000, :1024"
+        var source = RoutingRule(name: "Local ports", target: .direct)
+        source.direction = .source
+        source.port = "50000-60000"
+        profile.rules = [destination, source]
         try assertCoreAccepts(profile, binary: binary)
     }
 
