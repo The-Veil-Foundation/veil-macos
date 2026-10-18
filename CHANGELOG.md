@@ -5,6 +5,12 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [1.12.0] — Unreleased
 
+### Changed
+
+- The iOS app moved to its own repository,
+  [veil-ios](https://github.com/The-Veil-Foundation/veil-ios), with its history.
+  It still builds the shared `Models` and `Core` from here as a submodule.
+
 ### Added
 
 - The iOS app catches up with the desktop. The server list now has subscription

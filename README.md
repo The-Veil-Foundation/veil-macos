@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://faustyu1.github.io/veil/">Website</a> ·
-  <a href="docs/ios.md">Docs</a> ·
+  <a href="https://github.com/The-Veil-Foundation/veil-ios">iOS</a> ·
   <a href="https://github.com/faustyu1/veil/releases">Download</a> ·
   <a href="https://github.com/faustyu1/veil/issues">Issues</a>
 </p>
@@ -163,51 +163,9 @@ development setup, code style and PR checklist.
 
 ## iOS
 
-The repository also contains an iPhone/iPad app (`ios/`) built on Apple's **NetworkExtension**,
-so all traffic on the device is tunnelled. It ships **Xray-core only** — no tun2socks and no
-second core: Xray's own layer-3 `tun` inbound takes the utun descriptor straight from
-`NEPacketTunnelProvider`. It shares its entire model and core layer with the Mac app, so
-parsers, config builder, subscriptions, routing and localization behave identically.
-
-```bash
-Scripts/ios/build-xraycore.sh              # Xray-core -> XrayCore.xcframework
-Scripts/ios/build-app.sh simulator Release
-```
-
-See **[docs/ios.md](docs/ios.md)** for the packet path, signing requirements and the
-app↔extension protocol.
-
-<details>
-<summary><b>Why there is no iOS build to download yet</b></summary>
-
-<br>
-
-The tunnel needs the `packet-tunnel-provider` Network Extension entitlement. Apple only issues
-that entitlement through a **paid Apple Developer Program membership** ($99/year) — a free
-personal team cannot provision it.
-
-**Please don't try to sign the app with an ordinary certificate.** It will not work, and the
-failure is confusing rather than obvious:
-
-- Sign it with a free personal team and signing fails outright — the entitlement is rejected,
-  because entitlements have to be authorised by a provisioning profile Apple issued.
-- Strip the entitlement to make it build and the app installs and launches fine, but the VPN
-  never starts: `NETunnelProviderManager` refuses the configuration, and you get an error with
-  no obvious cause.
-
-Re-signing tools that rely on free accounts (AltStore, Sideloadly and friends) hit the same
-wall, for the same reason — none of them can grant an entitlement Apple has not issued.
-
-So the app is buildable from source by anyone who already has a paid account, but there is no
-signed build to hand out until the membership is funded. If you'd like to help:
-
-- **TON** — `UQDsbwQEaspICRDSW4oSNmL0PXxDlnfkiMuqoUbK7ufiCVXj`
-- **RUB** — [CloudTips](https://pay.cloudtips.ru/p/a207bf02)
-
-Nothing in the app is paywalled and none of this changes the licence — it stays AGPLv3 either
-way. The membership only buys the ability to ship a build that iOS will actually run.
-
-</details>
+The iPhone/iPad app lives in **[veil-ios](https://github.com/The-Veil-Foundation/veil-ios)**.
+It compiles this repository's `Sources/XrayClient/Models` and `Core` through a submodule, so
+changes there reach both apps.
 
 ## Project layout
 
@@ -222,7 +180,7 @@ Sources/VeilHelperKit/      XPC protocol + input validation shared with the help
 Sources/VeilHelper/         the privileged launchd daemon (routes, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/                      parsers, link builder, config builders, security, routing
-docs/                       ios.md, website
+docs/                       website
 ```
 
 ## Contributing

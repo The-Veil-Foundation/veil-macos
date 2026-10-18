@@ -20,11 +20,6 @@ Sources/XrayClient/Resources/tun2socks
 *.dmg
 dist/
 
-# iOS: the Xray-core xcframework is built locally
-# (Scripts/ios/build-xraycore.sh), never committed.
-ios/Frameworks/
-ios/build/
-
 # Xcode
 DerivedData/
 *.xcuserdatad/

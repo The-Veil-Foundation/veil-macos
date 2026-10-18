@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://faustyu1.github.io/veil/">Сайт</a> ·
-  <a href="docs/ios.md">Документация</a> ·
+  <a href="https://github.com/The-Veil-Foundation/veil-ios">iOS</a> ·
   <a href="https://github.com/faustyu1/veil/releases">Скачать</a> ·
   <a href="https://github.com/faustyu1/veil/issues">Issues</a>
 </p>
@@ -167,53 +167,9 @@ swift test
 
 ## iOS
 
-В репозитории есть и приложение для iPhone и iPad (`ios/`) на **NetworkExtension**, так что
-туннелируется весь трафик устройства. В нём **только Xray-core** — ни tun2socks, ни второго
-ядра: собственный layer-3 `tun` inbound Xray забирает дескриптор utun прямо из
-`NEPacketTunnelProvider`. Оно делит с Mac-приложением весь слой моделей и ядра, поэтому
-парсеры, сборщик конфигов, подписки, маршрутизация и локализация ведут себя одинаково.
-
-```bash
-Scripts/ios/build-xraycore.sh              # Xray-core -> XrayCore.xcframework
-Scripts/ios/build-app.sh simulator Release
-```
-
-Путь пакета, требования к подписи и протокол приложение↔расширение — в
-**[docs/ios.md](docs/ios.md)**.
-
-<details>
-<summary><b>Почему сборки для iOS пока нет</b></summary>
-
-<br>
-
-Туннелю нужен entitlement `packet-tunnel-provider` для Network Extension. Apple выдаёт его
-только по **платному членству в Apple Developer Program** ($99 в год) — бесплатная персональная
-команда его не провижинит.
-
-**Не пытайтесь подписать приложение обычным сертификатом.** Это не сработает, и отказ выглядит
-скорее запутанно, чем очевидно:
-
-- Подпишете бесплатной персональной командой — подпись просто упадёт: entitlement отклонят,
-  потому что его должен разрешить профиль, выданный Apple.
-- Уберёте entitlement, чтобы собралось, — приложение поставится и запустится, но VPN не
-  стартует: `NETunnelProviderManager` отказывается принимать конфигурацию, а ошибка ничего не
-  объясняет.
-
-Инструменты переподписи, работающие на бесплатных аккаунтах (AltStore, Sideloadly и прочие),
-упираются в ту же стену по той же причине — ни один из них не может выдать entitlement,
-которого не выдала Apple.
-
-Так что собрать из исходников может любой, у кого уже есть платный аккаунт, но раздать готовую
-подписанную сборку нечем, пока членство не оплачено. Если хотите помочь:
-
-- **TON** — `UQDsbwQEaspICRDSW4oSNmL0PXxDlnfkiMuqoUbK7ufiCVXj`
-- **RUB** — [CloudTips](https://pay.cloudtips.ru/p/a207bf02)
-
-Ничего в приложении не закрыто платно, и на лицензию это не влияет — она в любом случае
-остаётся AGPLv3. Членство покупает только возможность выпустить сборку, которую iOS реально
-запустит.
-
-</details>
+Приложение для iPhone и iPad живёт в **[veil-ios](https://github.com/The-Veil-Foundation/veil-ios)**.
+Оно собирает `Sources/XrayClient/Models` и `Core` из этого репозитория через submodule, так что
+изменения там попадают в оба приложения.
 
 ## Структура проекта
 
@@ -228,7 +184,7 @@ Sources/VeilHelperKit/      XPC-протокол и валидация вход�
 Sources/VeilHelper/         привилегированный launchd-демон (маршруты, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/                      парсеры, сборщик ссылок, сборщики конфигов, безопасность, маршруты
-docs/                       ios.md, сайт
+docs/                       сайт
 ```
 
 ## Участие в разработке

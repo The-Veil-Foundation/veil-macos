@@ -151,8 +151,7 @@ Sources/VeilHelperKit/      XPC protocol + input validation shared with the help
 Sources/VeilHelper/         the privileged launchd daemon (routes, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/XrayClientTests/      parsers, link builder, config builders, security, routing
-ios/                        iPhone/iPad app (NetworkExtension, Xray-core only)
-docs/                       ios.md, website
+docs/                       website
 ```
 
 ## Adding a Protocol
