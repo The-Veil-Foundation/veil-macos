@@ -100,6 +100,14 @@ struct AppSettings: Codable, Equatable {
     // `NodeReconciler` matches incoming nodes onto stored ones.
     var nodeAnnotations: [UUID: NodeAnnotation] = [:]
     var listGrouping: ListGrouping = .subscription
+    /// How the list measures latency, and what the proxy modes request.
+    var pingMode: PingMode = .proxyGet
+    var pingURL: String = PingMode.defaultURL
+    /// The narrow window: one column, sort and grouping behind a menu.
+    var compactLayout: Bool = false
+    /// Country, tag and protocol sections the user folded, as
+    /// `grouping:section`. Subscriptions keep their own flag.
+    var collapsedFacets: [String] = []
     /// Show nodes the user hid.
     var showHiddenNodes: Bool = false
     /// Read tags out of a node's own name and settings — the country, the
@@ -172,6 +180,16 @@ struct AppSettings: Codable, Equatable {
     var ipv6Enabled: Bool = true
     var dnsServers: [String] = ["1.1.1.1", "8.8.8.8"]
 
+    /// The test URL, or the default one when the field holds nothing usable.
+    var effectivePingURL: URL {
+        let trimmed = pingURL.trimmingCharacters(in: .whitespaces)
+        if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https", url.host != nil {
+            return url
+        }
+        return URL(string: PingMode.defaultURL)!
+    }
+
     /// The heights the log pane may be dragged to. Below the minimum its own
     /// toolbar no longer fits; above the maximum there is no list left.
     static func clampedLogHeight(_ height: Double) -> Double {
@@ -208,6 +226,10 @@ struct AppSettings: Codable, Equatable {
         lastRoutingTab = get(.lastRoutingTab, "rules")
         nodeAnnotations = get(.nodeAnnotations, [:])
         listGrouping = get(.listGrouping, .subscription)
+        pingMode = get(.pingMode, .proxyGet)
+        pingURL = get(.pingURL, PingMode.defaultURL)
+        compactLayout = get(.compactLayout, false)
+        collapsedFacets = get(.collapsedFacets, [])
         showHiddenNodes = get(.showHiddenNodes, false)
         autoTags = get(.autoTags, false)
         showSourcesTab = get(.showSourcesTab, true)
