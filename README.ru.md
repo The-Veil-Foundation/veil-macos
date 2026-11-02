@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://faustyu1.github.io/veil/">Сайт</a> ·
+  <a href="https://veil.faustyu.xyz">Сайт</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-ios">iOS</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-android">Android</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-macos/releases">Скачать</a> ·
@@ -187,7 +187,7 @@ Sources/VeilHelperKit/      XPC-протокол и валидация вход�
 Sources/VeilHelper/         привилегированный launchd-демон (маршруты, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/                      парсеры, сборщик ссылок, сборщики конфигов, безопасность, маршруты
-docs/                       сайт
+docs/                       agents.md (контракт локального API), спецификации
 ```
 
 ## Участие в разработке
