@@ -58,8 +58,11 @@ Sources/VeilHelperKit/          XPC protocol + input validation shared with the 
 Sources/VeilHelper/             the privileged launchd daemon
 Scripts/                        fetch-*, cores.lock, run-app.sh, *-daemon.sh, set-version.sh
 Tests/XrayClientTests/          parsers, link builder, config builders, security, routing
-docs/                           website
+docs/                           agents.md (local control API contract), design specs
 ```
+
+The website (veil.faustyu.xyz) lives in
+[The-Veil-Foundation/veil-site](https://github.com/The-Veil-Foundation/veil-site), not here.
 
 ## Rules that are easy to get wrong
 

@@ -3,6 +3,16 @@
 All notable changes to Veil are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Removed
+
+- The website. It moved, with its history, to
+  [The-Veil-Foundation/veil-site](https://github.com/The-Veil-Foundation/veil-site)
+  and is still served at <https://veil.faustyu.xyz>. `docs/` keeps the control
+  API contract (`agents.md`) and the design specs. The README links point at
+  the site's own domain instead of the old `github.io` address.
+
 ## [1.12.0] — 2026-11-03
 
 ### Added

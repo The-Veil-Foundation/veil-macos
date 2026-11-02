@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://faustyu1.github.io/veil/">Website</a> ·
+  <a href="https://veil.faustyu.xyz">Website</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-ios">iOS</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-android">Android</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-macos/releases">Download</a> ·
@@ -183,7 +183,7 @@ Sources/VeilHelperKit/      XPC protocol + input validation shared with the help
 Sources/VeilHelper/         the privileged launchd daemon (routes, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/                      parsers, link builder, config builders, security, routing
-docs/                       website
+docs/                       agents.md (local control API contract), design specs
 ```
 
 ## Contributing
