@@ -103,8 +103,6 @@ struct AppSettings: Codable, Equatable {
     /// How the list measures latency, and what the proxy modes request.
     var pingMode: PingMode = .proxyGet
     var pingURL: String = PingMode.defaultURL
-    /// The narrow window: one column, sort and grouping behind a menu.
-    var compactLayout: Bool = false
     /// Country, tag and protocol sections the user folded, as
     /// `grouping:section`. Subscriptions keep their own flag.
     var collapsedFacets: [String] = []
@@ -228,7 +226,6 @@ struct AppSettings: Codable, Equatable {
         listGrouping = get(.listGrouping, .subscription)
         pingMode = get(.pingMode, .proxyGet)
         pingURL = get(.pingURL, PingMode.defaultURL)
-        compactLayout = get(.compactLayout, false)
         collapsedFacets = get(.collapsedFacets, [])
         showHiddenNodes = get(.showHiddenNodes, false)
         autoTags = get(.autoTags, false)

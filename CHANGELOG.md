@@ -13,8 +13,10 @@ All notable changes to Veil are recorded here. Versions follow
   each server to a test URL and time the answer. The proxy modes also catch a
   node that accepts connections but carries nothing. Proxy GET is the default;
   the test URL can be changed.
-- A compact window for the side of the screen. The connect button moves under
-  the status and the toolbar shows icons only.
+- The main window can be made narrow, down to 360 pt, for the side of the
+  screen. Below about 560 pt it switches layout by itself: the connect button
+  moves under the status, the toolbar shows icons only and the filter chips
+  move into the view menu.
 - Sorting, grouping, the alive filter, country and tag filters and the ping
   mode now live in one menu beside the search field. Its icon fills in while a
   filter is narrowing the list.

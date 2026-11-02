@@ -20,9 +20,7 @@ struct XrayClientApp: App {
                 .veilEnvironment(store: store, connection: connection,
                                  pinger: pinger, loc: loc, control: control,
                                  updater: updater)
-                .frame(minWidth: store.settings.compactLayout ? WindowSizer.compactWidth
-                                                              : WindowSizer.regularWidth,
-                       minHeight: 520)
+                .frame(minWidth: CompactLayout.minimumWidth, minHeight: 520)
                 .onAppear { startUp() }
         }
         .windowResizability(.contentSize)

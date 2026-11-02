@@ -180,14 +180,6 @@ struct SettingsView: View {
                 HintLabel(loc("Show the Sources tab"), loc("The page that says where the servers came from, what each source returned and what it could not use. Hide it once your subscriptions are set up; everything on it stays available here."))
             }
             .onChange(of: store.settings.showSourcesTab) { _, _ in store.save() }
-
-            Toggle(isOn: $store.settings.compactLayout) {
-                HintLabel(loc("Compact window"), loc("A narrow window for the side of the screen: the connect button under the status, sorting, grouping and filters in the menu beside the search field."))
-            }
-            .onChange(of: store.settings.compactLayout) { _, compact in
-                store.save()
-                WindowSizer.fit(compact: compact)
-            }
         }
 
         Section(loc("Ping")) {

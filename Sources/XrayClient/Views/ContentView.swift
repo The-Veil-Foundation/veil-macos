@@ -109,6 +109,8 @@ struct ContentView: View {
             Divider()
             footer
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        .environment(\.compactLayout, isCompact)
         .sheet(isPresented: $showAddSheet) { AddServerSheet() }
         // Measure once on the first appearance, so the list carries latencies
         // without the user having to know a Test Ping button exists.
@@ -195,7 +197,11 @@ struct ContentView: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
     }
 
-    private var isCompact: Bool { store.settings.compactLayout }
+    /// Width of the window, read from the layout. Below
+    /// `CompactLayout.threshold` the window switches to the narrow layout by
+    /// itself — there is nothing to turn on, the user just makes it smaller.
+    @State private var windowWidth: CGFloat = CompactLayout.threshold
+    private var isCompact: Bool { windowWidth < CompactLayout.threshold }
 
     /// Sorting, grouping, filters and the ping mode, in one menu.
     ///
@@ -259,8 +265,6 @@ struct ContentView: View {
                     }
                 }
             }
-            Divider()
-            Toggle(loc("Compact window"), isOn: $store.settings.compactLayout)
         } label: {
             Image(systemName: narrowing
                   ? "line.3.horizontal.decrease.circle.fill"
@@ -281,10 +285,6 @@ struct ContentView: View {
             // Numbers from another mode are not comparable with the new ones.
             pinger.clear()
             pinger.test(store.allServers, tunActive: tunActive)
-        }
-        .onChange(of: store.settings.compactLayout) { _, compact in
-            store.save()
-            WindowSizer.fit(compact: compact)
         }
     }
 
@@ -559,32 +559,24 @@ struct VeilLabelStyle: LabelStyle {
     }
 }
 
-/// Resizes the main window when the compact layout is switched, so the
-/// setting is visible at once rather than only after a manual drag.
-enum WindowSizer {
-    static let compactWidth: CGFloat = 380
-    static let regularWidth: CGFloat = 760
+/// Where the window turns narrow.
+enum CompactLayout {
+    /// Narrower than this and the header stacks, the toolbar drops its titles
+    /// and the filter chips move into the view menu.
+    static let threshold: CGFloat = 560
+    static let minimumWidth: CGFloat = 360
+}
 
-    @MainActor
-    static func fit(compact: Bool) {
-        guard let window = NSApp.windows.first(where: {
-            $0.identifier?.rawValue.hasPrefix(WindowID.main) == true && $0.isVisible
-        }) ?? NSApp.mainWindow else { return }
-        var frame = window.frame
-        let width = compact ? compactWidth : max(regularWidth, frame.width)
-        guard frame.width != width else { return }
-        // Keep the top-right corner where it was: the window shrinks toward
-        // the menu bar icon it is usually opened from.
-        frame.origin.x += frame.width - width
-        frame.size.width = width
-        window.setFrame(frame, display: true, animate: true)
-    }
+extension EnvironmentValues {
+    /// True while the main window is narrower than `CompactLayout.threshold`.
+    @Entry var compactLayout: Bool = false
 }
 
 // MARK: - Header (status + connect)
 
 /// Status, mode switch and the connect button.
 private struct ConnectionHeader: View {
+    @Environment(\.compactLayout) private var compact
     @Environment(ServerStore.self) private var store
     @Environment(ConnectionManager.self) private var connection
     @Environment(Loc.self) private var loc
@@ -593,7 +585,7 @@ private struct ConnectionHeader: View {
         let selected = store.server(withID: store.selectedServerID)
         // The narrow window has no room for status, mode and button on one
         // line, so the controls drop to a row of their own.
-        if store.settings.compactLayout {
+        if compact {
             return AnyView(VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) { status(selected: selected); Spacer(minLength: 0) }
                 HStack(spacing: 10) {
