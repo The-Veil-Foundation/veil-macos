@@ -3,10 +3,23 @@
 All notable changes to Veil are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [1.12.0] — Unreleased
+## [1.12.0] — 2026-11-03
 
 ### Added
 
+- Four ping modes, chosen in the list's menu or in Settings → Server list:
+  **TCP** (a connection to the server, a QUIC handshake for Hysteria2 and TUIC),
+  **ICMP**, and **Proxy HEAD** / **Proxy GET**, which send a request through
+  each server to a test URL and time the answer. The proxy modes also catch a
+  node that accepts connections but carries nothing. Proxy GET is the default;
+  the test URL can be changed.
+- A compact window for the side of the screen. The connect button moves under
+  the status and the toolbar shows icons only.
+- Sorting, grouping, the alive filter, country and tag filters and the ping
+  mode now live in one menu beside the search field. Its icon fills in while a
+  filter is narrowing the list.
+- Servers can be grouped by protocol. Country, tag and protocol sections fold
+  like subscriptions do, and their header shows the fastest ping in the group.
 - The iOS app catches up with the desktop. The server list now has subscription
   sections with notes, traffic and expiry, grouping, tag and protocol filters,
   sort by ping, pins, custom names and tags, and an arrange mode.
@@ -28,6 +41,25 @@ All notable changes to Veil are recorded here. Versions follow
   navigation bar.
 - The iOS QR code is drawn with rounded dots and the app's mark, opens at once,
   and has proper Copy and Share buttons.
+
+### Fixed
+
+- Refreshing a subscription returns what the panel serves now. Responses went
+  through the shared HTTP cache, so a panel or CDN that sent `Cache-Control`
+  kept handing back the old node list and its old hosts. Subscriptions are now
+  fetched without any cache, and what earlier builds cached is deleted at
+  launch. A refresh that fails writes the reason to the log.
+- Ping no longer reads 1–2 ms on every server while TUN is on. The probes
+  followed the default route into the tunnel and were answered by its own
+  network stack on this Mac. They are now pinned to the physical interface, and
+  with fake-IP DNS the server's real address is looked up off the tunnel.
+- In TUN mode, apps that use the system resolver are proxied properly when the
+  DNS server is the router. The router sits on the LAN the tunnel leaves out, so
+  every system lookup went to the router and the provider behind it instead of
+  the core, and those apps got the provider's answers. Its address is now routed
+  into the tunnel and its queries are handled by the core's DNS. This is one
+  cause of "TUN does not proxy some apps"; if an app still bypasses the tunnel,
+  please report which one.
 
 ### Changed
 
