@@ -112,7 +112,11 @@ struct ContentView: View {
         .sheet(isPresented: $showAddSheet) { AddServerSheet() }
         // Measure once on the first appearance, so the list carries latencies
         // without the user having to know a Test Ping button exists.
-        .task { pingAllIfUntested() }
+        .task {
+            pinger.mode = store.settings.pingMode
+            pinger.probeURL = store.settings.effectivePingURL
+            pingAllIfUntested()
+        }
         .task { await refreshHelperStaleness() }
     }
 
@@ -186,22 +190,110 @@ struct ContentView: View {
                 }.buttonStyle(.plain)
             }
             Divider().frame(height: 16)
-            Toggle(loc("Alive"), isOn: $aliveOnly)
-                .glassToggle().controlSize(.small)
-                .help(loc("Show only servers that answered a ping. Turning this on measures them first."))
-                // Without this the filter empties the whole list on a fresh
-                // launch: nothing has been measured yet, so nothing is "alive".
-                .onChange(of: aliveOnly) { _, on in
-                    if on { pingAllIfUntested() }
-                }
-            Toggle(loc("By ping"), isOn: $sortByPing)
-                .glassToggle().controlSize(.small)
-                .help(loc("Sort servers by latency within each group"))
-                .onChange(of: sortByPing) { _, on in
-                    if on { pingAllIfUntested() }
-                }
+            viewMenu
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
+    }
+
+    private var isCompact: Bool { store.settings.compactLayout }
+
+    /// Sorting, grouping, filters and the ping mode, in one menu.
+    ///
+    /// They used to be two toggles in the search field and a picker under it,
+    /// which is most of a narrow window's width spent on controls that are set
+    /// once. The label shows a badge while anything narrows the list, so a
+    /// filter tucked in here never hides servers silently.
+    private var viewMenu: some View {
+        @Bindable var store = store
+        let countries = store.settings.autoTags ? countriesInUse : []
+        let tags = store.allTags
+        let narrowing = aliveOnly || !selectedTags.isEmpty || !selectedCountries.isEmpty
+
+        return Menu {
+            Section(loc("Sort")) {
+                Picker(loc("Sort"), selection: $sortByPing) {
+                    Label(loc("Source order"), systemImage: "list.number").tag(false)
+                    Label(loc("By ping"), systemImage: "speedometer").tag(true)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+            Section(loc("Group by")) {
+                Picker(loc("Group by"), selection: $store.settings.listGrouping) {
+                    ForEach(ListGrouping.allCases) { grouping in
+                        Label(loc(grouping.title), systemImage: grouping.icon).tag(grouping)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+            Section(loc("Filter")) {
+                Toggle(loc("Alive only"), isOn: $aliveOnly)
+                if countries.count > 1 {
+                    Menu(loc("Countries")) {
+                        ForEach(countries, id: \.self) { code in
+                            Toggle(NodeFacets.flag(for: code) + " " + NodeFacets.countryName(for: code),
+                                   isOn: membership(code, in: $selectedCountries))
+                        }
+                    }
+                }
+                if !tags.isEmpty {
+                    Menu(loc("Tags")) {
+                        ForEach(tags, id: \.self) { tag in
+                            Toggle(tag, isOn: membership(tag, in: $selectedTags))
+                        }
+                    }
+                }
+                if narrowing {
+                    Button(loc("Clear filters")) {
+                        aliveOnly = false
+                        selectedTags = []
+                        selectedCountries = []
+                    }
+                }
+            }
+            Section(loc("Ping")) {
+                Picker(loc("Ping mode"), selection: $store.settings.pingMode) {
+                    ForEach(PingMode.allCases) { mode in
+                        Text(loc(mode.title)).tag(mode)
+                    }
+                }
+            }
+            Divider()
+            Toggle(loc("Compact window"), isOn: $store.settings.compactLayout)
+        } label: {
+            Image(systemName: narrowing
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(loc("Sort, group and filter the list"))
+        // Both the filter and the sort are meaningless before a measurement:
+        // on a fresh launch nothing has answered yet, so nothing is "alive".
+        .onChange(of: aliveOnly) { _, on in if on { pingAllIfUntested() } }
+        .onChange(of: sortByPing) { _, on in if on { pingAllIfUntested() } }
+        .onChange(of: store.settings.listGrouping) { _, _ in store.save() }
+        .onChange(of: store.settings.pingMode) { _, mode in
+            pinger.mode = mode
+            store.save()
+            // Numbers from another mode are not comparable with the new ones.
+            pinger.clear()
+            pinger.test(store.allServers, tunActive: tunActive)
+        }
+        .onChange(of: store.settings.compactLayout) { _, compact in
+            store.save()
+            WindowSizer.fit(compact: compact)
+        }
+    }
+
+    private func membership(_ value: String, in set: Binding<Set<String>>) -> Binding<Bool> {
+        Binding(
+            get: { set.wrappedValue.contains(value) },
+            set: { on in
+                if on { set.wrappedValue.insert(value) } else { set.wrappedValue.remove(value) }
+            })
     }
 
     /// The two halves of the main window. Where servers come from is a
@@ -228,7 +320,6 @@ struct ContentView: View {
     /// I looking at — and neither belongs in a settings window.
     @ViewBuilder
     private var listControls: some View {
-        @Bindable var store = store
         // Both rows are read out of the node names, so they answer to the same
         // switch: turning name-reading off and still being shown a row of
         // countries the app guessed is the setting not doing what it says.
@@ -236,31 +327,8 @@ struct ContentView: View {
         let tags = store.allTags
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Picker(selection: $store.settings.listGrouping) {
-                    ForEach(ListGrouping.allCases) { grouping in
-                        Label(loc(grouping.title), systemImage: grouping.icon).tag(grouping)
-                    }
-                } label: {
-                    Text(loc("Group by"))
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .help(loc("Arrange the list by subscription, by tag, or by country. Tags and countries merge every subscription into one list."))
-                .onChange(of: store.settings.listGrouping) { _, _ in store.save() }
-
-                Spacer()
-
-                if !selectedTags.isEmpty || !selectedCountries.isEmpty {
-                    Button(loc("Clear filters")) {
-                        selectedTags = []
-                        selectedCountries = []
-                    }
-                    .buttonStyle(.link).font(.caption)
-                }
-            }
-
-            if countries.count > 1 || !tags.isEmpty {
+            // In the narrow window the chips live in the view menu instead.
+            if !isCompact, countries.count > 1 || !tags.isEmpty {
                 FlowLayout(spacing: 6) {
                     ForEach(countries, id: \.self) { code in
                         chip(title: NodeFacets.flag(for: code) + " " + NodeFacets.countryName(for: code),
@@ -276,7 +344,7 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.horizontal, 12).padding(.bottom, 6)
+        .padding(.horizontal, 12).padding(.bottom, isCompact ? 0 : 6)
         // A filter whose chips are gone would narrow the list invisibly.
         .onChange(of: store.settings.autoTags) { _, on in
             if !on { selectedCountries = []; selectedTags = [] }
@@ -433,7 +501,7 @@ struct ContentView: View {
                 }
                 .glassButton()
             }
-            .labelStyle(.titleAndIcon)
+            .labelStyle(VeilLabelStyle(iconOnly: isCompact))
             .padding(.horizontal, 12).padding(.vertical, 8)
         }
     }
@@ -475,6 +543,44 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Compact window
+
+/// A label that drops its title in the narrow window, where a row of five
+/// titled buttons no longer fits. The title stays for VoiceOver.
+struct VeilLabelStyle: LabelStyle {
+    var iconOnly: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if iconOnly {
+            Label(configuration).labelStyle(.iconOnly)
+        } else {
+            Label(configuration).labelStyle(.titleAndIcon)
+        }
+    }
+}
+
+/// Resizes the main window when the compact layout is switched, so the
+/// setting is visible at once rather than only after a manual drag.
+enum WindowSizer {
+    static let compactWidth: CGFloat = 380
+    static let regularWidth: CGFloat = 760
+
+    @MainActor
+    static func fit(compact: Bool) {
+        guard let window = NSApp.windows.first(where: {
+            $0.identifier?.rawValue.hasPrefix(WindowID.main) == true && $0.isVisible
+        }) ?? NSApp.mainWindow else { return }
+        var frame = window.frame
+        let width = compact ? compactWidth : max(regularWidth, frame.width)
+        guard frame.width != width else { return }
+        // Keep the top-right corner where it was: the window shrinks toward
+        // the menu bar icon it is usually opened from.
+        frame.origin.x += frame.width - width
+        frame.size.width = width
+        window.setFrame(frame, display: true, animate: true)
+    }
+}
+
 // MARK: - Header (status + connect)
 
 /// Status, mode switch and the connect button.
@@ -485,7 +591,30 @@ private struct ConnectionHeader: View {
 
     var body: some View {
         let selected = store.server(withID: store.selectedServerID)
-        return HStack(spacing: 14) {
+        // The narrow window has no room for status, mode and button on one
+        // line, so the controls drop to a row of their own.
+        if store.settings.compactLayout {
+            return AnyView(VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) { status(selected: selected); Spacer(minLength: 0) }
+                HStack(spacing: 10) {
+                    modePicker
+                    Spacer(minLength: 0)
+                    connectButton(selected: selected)
+                }
+            }
+            .padding(12))
+        }
+        return AnyView(HStack(spacing: 14) {
+            status(selected: selected)
+            Spacer()
+            modePicker
+            connectButton(selected: selected)
+        }
+        .padding(14))
+    }
+
+    @ViewBuilder
+    private func status(selected: ProxyConfig?) -> some View {
             ZStack {
                 Circle().fill(statusColor.opacity(0.18)).frame(width: 44, height: 44)
                 Image(systemName: connection.isConnected ? "shield.lefthalf.filled" : "shield.slash")
@@ -513,11 +642,6 @@ private struct ConnectionHeader: View {
                     Text(loc("Select a server")).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            Spacer()
-            modePicker
-            connectButton(selected: selected)
-        }
-        .padding(14)
     }
 
     private var modePicker: some View {

@@ -57,6 +57,8 @@ enum ListGrouping: String, Codable, CaseIterable, Identifiable {
     case tag
     /// One section per country, merging every source.
     case country
+    /// One section per protocol — VLESS, Hysteria2, WireGuard…
+    case protocolType = "protocol"
     /// One flat list.
     case none
 
@@ -67,6 +69,7 @@ enum ListGrouping: String, Codable, CaseIterable, Identifiable {
         case .subscription: return "Subscription"
         case .tag:          return "Tag"
         case .country:      return "Country"
+        case .protocolType: return "Protocol"
         case .none:         return "No grouping"
         }
     }
@@ -76,6 +79,7 @@ enum ListGrouping: String, Codable, CaseIterable, Identifiable {
         case .subscription: return "square.stack.3d.up"
         case .tag:          return "tag"
         case .country:      return "globe"
+        case .protocolType: return "network"
         case .none:         return "list.bullet"
         }
     }

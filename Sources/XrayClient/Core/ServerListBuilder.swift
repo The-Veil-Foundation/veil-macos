@@ -101,6 +101,12 @@ enum ServerListBuilder {
                 } ?? []
             }
 
+        case .protocolType:
+            return facetSections(sources: sources, annotations: annotations,
+                                 filter: filter, autoTags: autoTags) { server in
+                [Facet(key: server.proto.rawValue, title: server.proto.rawValue.uppercased())]
+            }
+
         case .tag:
             return facetSections(sources: sources, annotations: annotations,
                                  filter: filter, autoTags: autoTags) { server in
