@@ -104,6 +104,7 @@ final class PingProbeTests: XCTestCase {
 final class PingProbeLiveTests: XCTestCase {
 
     func testARequestThroughALocalNodeIsTimed() async throws {
+        try XCTSkipUnless(CoreBinary.locate(for: .xray) != nil, "core not fetched")
         let binary = try XCTUnwrap(CoreBinary.locate(for: .xray))
         let url = URL(string: PingMode.defaultURL)!
         let direct = try? await URLSession.shared.data(from: url)
