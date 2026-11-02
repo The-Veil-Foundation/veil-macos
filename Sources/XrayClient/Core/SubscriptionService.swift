@@ -1,8 +1,11 @@
 import Foundation
+import os
 
 /// Refreshes subscription profiles from their URLs.
 @MainActor
 enum SubscriptionService {
+
+    private static let log = Logger(subsystem: "com.veil.client", category: "sub-refresh")
 
     /// Refresh a single subscription by URL and write results into the store.
     @discardableResult
@@ -40,6 +43,12 @@ enum SubscriptionService {
             store.mutateSubscription(id: sub.id) { $0.hwidStatus = .maxDevicesReached }
             return false
         } catch {
+            // A failed refresh used to look exactly like "nothing changed".
+            // The reason goes to the log; the URL never does.
+            log.error("""
+                subscription refresh failed host=\(Redaction.url(url), privacy: .public) \
+                error=\(error.localizedDescription, privacy: .public)
+                """)
             return false
         }
     }

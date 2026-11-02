@@ -106,6 +106,7 @@ struct XrayClientApp: App {
                 connection.connect(to: server)
             }
         }
+        SubscriptionFetcher.purgeLegacyCache()
         Task { await SubscriptionService.refreshDue(store) }
         // Warm the process catalog so the control API's /v1/apps has data
         // before the picker is ever opened.
