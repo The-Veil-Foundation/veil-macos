@@ -44,6 +44,43 @@ struct IPRange: Equatable {
         prefix <= other.prefix && overlaps(other)
     }
 
+    private init(network: UInt32, prefix: UInt8) {
+        self.network = network & IPRange.mask(prefix)
+        self.prefix = prefix
+    }
+
+    /// `a.b.c.d/len`.
+    var cidr: String {
+        let octets = [24, 16, 8, 0].map { String((network >> UInt32($0)) & 0xff) }
+        return octets.joined(separator: ".") + "/\(prefix)"
+    }
+
+    /// This block with `hole` cut out, as the fewest CIDR blocks that cover
+    /// the rest. A hole that does not overlap leaves the block whole; one that
+    /// covers it leaves nothing.
+    func subtracting(_ hole: IPRange) -> [IPRange] {
+        guard overlaps(hole) else { return [self] }
+        guard prefix < hole.prefix else { return [] }
+        // Walk down from this block to the hole, keeping at each step the
+        // half the hole is not in.
+        var result: [IPRange] = []
+        var current = self
+        while current.prefix < hole.prefix {
+            let next = current.prefix + 1
+            let bit = UInt32(1) << (32 - UInt32(next))
+            let low = IPRange(network: current.network, prefix: next)
+            let high = IPRange(network: current.network | bit, prefix: next)
+            if low.overlaps(hole) {
+                result.append(high)
+                current = low
+            } else {
+                result.append(low)
+                current = high
+            }
+        }
+        return result
+    }
+
     private static func mask(_ length: UInt8) -> UInt32 {
         length == 0 ? 0 : UInt32.max << (32 - UInt32(length))
     }

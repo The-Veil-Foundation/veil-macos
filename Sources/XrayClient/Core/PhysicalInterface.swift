@@ -61,6 +61,15 @@ enum PhysicalInterface {
         return nil
     }
 
+    /// The DNS servers macOS resolves through, as configured for the network.
+    static func systemResolvers() -> [String] {
+        guard let store = SCDynamicStoreCreate(nil, "Veil" as CFString, nil, nil),
+              let value = SCDynamicStoreCopyValue(store, "State:/Network/Global/DNS" as CFString)
+                as? [String: Any],
+              let servers = value["ServerAddresses"] as? [String] else { return [] }
+        return servers
+    }
+
     static func isTunnel(_ name: String) -> Bool {
         name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("ppp")
     }
