@@ -3,9 +3,13 @@ import Network
 import Observation
 import os
 
-/// TCP-connect latency tester. Measures time to establish a TCP connection to
-/// each server's address:port — a good proxy for reachability + RTT without
-/// needing the full proxy handshake.
+/// Latency tester for the server list.
+///
+/// The direct modes time a connection to the server itself; the proxy modes
+/// time a request sent through the node (see `PingMode`). While the tunnel is
+/// up, every direct probe is pinned to the physical interface: one that
+/// followed the default route into utun was answered by the tunnel's own TCP
+/// stack on this machine and read 1–2 ms for every server.
 @MainActor
 @Observable
 final class PingTester {
@@ -14,54 +18,79 @@ final class PingTester {
     /// Server ids currently being tested.
     private(set) var testing: Set<UUID> = []
 
+    /// How servers are measured. The list keeps this in step with the setting.
+    var mode: PingMode = .proxyGet
+    /// What the proxy modes request.
+    var probeURL = URL(string: PingMode.defaultURL)!
+
     /// Test a batch of servers concurrently (bounded), updating results live.
-    /// When `tunActive` is true, host-routes are added first so probes bypass
-    /// the tunnel and measure real RTT (then cleaned up afterwards).
+    /// `tunActive` pins the probes to the physical interface so they measure
+    /// the real path rather than the tunnel.
     func test(_ servers: [ProxyConfig], tunActive: Bool = false, timeout: TimeInterval = 3.0) {
         for s in servers { testing.insert(s.id) }
+        let mode = self.mode
+        let url = probeURL
+
+        #if os(macOS)
+        let physical = tunActive ? PhysicalInterface.current() : nil
+        if mode.usesProxy {
+            let request = ProxyProbe.Request(url: url, method: mode.httpMethod,
+                                             timeout: max(timeout, 5),
+                                             interface: physical?.name)
+            Task.detached(priority: .userInitiated) {
+                await ProxyProbe.measure(servers, request: request) { batch in
+                    await self.applyResults(batch)
+                }
+            }
+            return
+        }
+        let boundIndex = physical?.index
+        #else
+        let boundIndex: UInt32? = nil
+        #endif
+
         let targets = servers.map {
             ($0.id, $0.allAddresses, $0.port, $0.pingStrategy, $0.sni, $0.alpn)
         }
 
         Task.detached(priority: .userInitiated) {
-            #if os(macOS)
-            // Resolve hostnames to IPs and pin them off the tunnel for the test.
-            var pinnedIPs: [String] = []
-            if tunActive {
-                for (_, hosts, _, _, _, _) in targets {
-                    for host in hosts {
-                        pinnedIPs.append(contentsOf: TunManager.resolveIPs(host: host))
-                    }
-                }
-                // Route manipulation runs a blocking `sudo -n` Process — keep it
-                // off the main thread so the UI stays responsive.
-                TunManager.pingRouteAdd(pinnedIPs)
-                // Give the routing table a moment to settle.
-                try? await Task.sleep(nanoseconds: 200_000_000)
-            }
-            #endif
-
             await withTaskGroup(of: (UUID, Int?).self) { group in
                 let maxConcurrent = 16
                 var iterator = targets.makeIterator()
 
                 func addNext(_ group: inout TaskGroup<(UUID, Int?)>) {
                     guard let (id, hosts, port, strategy, sni, alpn) = iterator.next() else { return }
-                    let host = hosts.first ?? ""
+                    let name = hosts.first ?? ""
                     group.addTask {
+                        // Off the tunnel the name has to resolve off it too:
+                        // with fake-IP DNS the system answer is an address
+                        // that exists only inside the core.
+                        var host = name
+                        #if os(macOS)
+                        if let boundIndex {
+                            guard let ip = DirectResolver.resolve(name, interface: boundIndex).first else {
+                                return (id, nil)
+                            }
+                            host = ip
+                        }
+                        #endif
                         let ms: Int?
-                        switch strategy {
+                        switch mode == .icmp ? .icmp : strategy {
                         case .tcp:
-                            ms = await PingTester.tcpLatency(host: host, port: port, timeout: timeout)
+                            ms = await PingTester.tcpLatency(host: host, port: port,
+                                                             timeout: timeout,
+                                                             interface: boundIndex)
                         case .quic:
                             // Hysteria2/TUIC speak QUIC — time a real QUIC+TLS
                             // handshake to the UDP port.
                             ms = await PingTester.quicLatency(host: host, port: port,
-                                                              sni: sni, alpn: alpn,
-                                                              timeout: timeout)
+                                                              sni: sni ?? name, alpn: alpn,
+                                                              timeout: timeout,
+                                                              avoidTunnel: boundIndex != nil)
                         case .icmp:
                             // WireGuard: no TCP port, not QUIC — ICMP echo.
-                            ms = await PingTester.icmpLatency(host: host, timeout: timeout)
+                            ms = await PingTester.icmpLatency(host: host, timeout: timeout,
+                                                              interface: boundIndex)
                         }
                         return (id, ms)
                     }
@@ -87,12 +116,6 @@ final class PingTester {
                 }
                 if !pending.isEmpty { await self.applyResults(pending) }
             }
-
-            #if os(macOS)
-            if tunActive {
-                TunManager.pingRouteDel()
-            }
-            #endif
         }
     }
 
@@ -124,16 +147,21 @@ final class PingTester {
     // MARK: - Low-level TCP connect timing
 
     /// Returns latency in ms, or nil on failure/timeout. Runs off the main actor.
-    nonisolated static func tcpLatency(host: String, port: Int, timeout: TimeInterval) async -> Int? {
+    /// `interface` pins the socket to that interface index; nil follows the
+    /// routing table, which is what the local readiness checks want.
+    nonisolated static func tcpLatency(host: String, port: Int, timeout: TimeInterval,
+                                       interface: UInt32? = nil) async -> Int? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let ms = blockingTCPLatency(host: host, port: port, timeout: timeout)
+                let ms = blockingTCPLatency(host: host, port: port, timeout: timeout,
+                                            interface: interface)
                 continuation.resume(returning: ms)
             }
         }
     }
 
-    private nonisolated static func blockingTCPLatency(host: String, port: Int, timeout: TimeInterval) -> Int? {
+    private nonisolated static func blockingTCPLatency(host: String, port: Int, timeout: TimeInterval,
+                                                       interface: UInt32?) -> Int? {
         var hints = addrinfo(ai_flags: 0, ai_family: AF_UNSPEC, ai_socktype: SOCK_STREAM,
                              ai_protocol: IPPROTO_TCP, ai_addrlen: 0,
                              ai_canonname: nil, ai_addr: nil, ai_next: nil)
@@ -146,6 +174,11 @@ final class PingTester {
         let fd = socket(addr.pointee.ai_family, addr.pointee.ai_socktype, addr.pointee.ai_protocol)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
+        #if os(macOS)
+        if let interface {
+            PhysicalInterface.bind(fd, family: addr.pointee.ai_family, to: interface)
+        }
+        #endif
 
         // Non-blocking connect with select() for a precise timeout.
         let flags = fcntl(fd, F_GETFL, 0)
@@ -192,7 +225,8 @@ final class PingTester {
     /// the main actor.
     nonisolated static func quicLatency(host: String, port: Int,
                                         sni: String?, alpn: [String]?,
-                                        timeout: TimeInterval) async -> Int? {
+                                        timeout: TimeInterval,
+                                        avoidTunnel: Bool = false) async -> Int? {
         guard #available(macOS 15.0, *) else {
             // QUIC NWParameters init isn't available pre-15 — fall back to ICMP
             // so these servers still get a reachability number.
@@ -215,6 +249,9 @@ final class PingTester {
         )
 
         let params = NWParameters(quic: quicOptions)
+        // utun devices are type `.other`; keeping off them keeps the
+        // handshake off the tunnel.
+        if avoidTunnel { params.prohibitedInterfaceTypes = [.other] }
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host),
                                            port: NWEndpoint.Port(rawValue: UInt16(port)) ?? .any)
         let connection = NWConnection(to: endpoint, using: params)
@@ -269,10 +306,11 @@ final class PingTester {
     /// Returns round-trip latency in ms via an ICMP echo, or nil on
     /// failure/timeout. Used for Hysteria2/TUIC/WireGuard, which expose no TCP
     /// port. Runs off the main actor.
-    nonisolated static func icmpLatency(host: String, timeout: TimeInterval) async -> Int? {
+    nonisolated static func icmpLatency(host: String, timeout: TimeInterval,
+                                        interface: UInt32? = nil) async -> Int? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let ms = blockingICMPLatency(host: host, timeout: timeout)
+                let ms = blockingICMPLatency(host: host, timeout: timeout, interface: interface)
                 continuation.resume(returning: ms)
             }
         }
@@ -284,7 +322,8 @@ final class PingTester {
     /// (`SOCK_DGRAM` + `IPPROTO_ICMP`) — no root or setuid needed. The kernel
     /// fills in the identifier and validates replies, so we only match on the
     /// echo sequence number.
-    private nonisolated static func blockingICMPLatency(host: String, timeout: TimeInterval) -> Int? {
+    private nonisolated static func blockingICMPLatency(host: String, timeout: TimeInterval,
+                                                        interface: UInt32?) -> Int? {
         // Resolve to an IPv4 address. (Datagram ICMP here targets IPv4/ICMPv4.)
         var hints = addrinfo(ai_flags: 0, ai_family: AF_INET, ai_socktype: SOCK_DGRAM,
                              ai_protocol: IPPROTO_ICMP, ai_addrlen: 0,
@@ -298,6 +337,9 @@ final class PingTester {
         let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
+        #if os(macOS)
+        if let interface { PhysicalInterface.bind(fd, family: AF_INET, to: interface) }
+        #endif
 
         // ICMP echo request header: type(8) code(0) checksum id seq.
         // In datagram mode the kernel overwrites id and the checksum, but a

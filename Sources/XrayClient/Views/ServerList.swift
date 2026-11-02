@@ -78,11 +78,20 @@ struct ListSectionView: View {
 
     private var facetHeader: some View {
         HStack(spacing: 8) {
-            Text(loc(section.title)).font(.headline)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+            Text(loc(section.title)).font(.headline).lineLimit(1)
             Text(verbatim: "\(section.servers.count + section.groups.count)")
                 .font(.caption2).foregroundStyle(.secondary)
                 .padding(.horizontal, 6).padding(.vertical, 1)
                 .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            if let best = bestLatency {
+                Text(verbatim: "\(best) ms")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    .help(loc("Fastest server in this group"))
+            }
             Spacer()
             Button {
                 pinger.test(section.servers, tunActive: tunActive)
@@ -93,6 +102,15 @@ struct ListSectionView: View {
             .help(loc("Test ping (group)"))
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.15)) { store.toggleFacet(section.id) }
+        }
+    }
+
+    /// The lowest latency measured in this section, if any answered.
+    private var bestLatency: Int? {
+        section.servers.compactMap { pinger.latency(for: $0.id) ?? nil }.min()
     }
 
     // MARK: - Rows

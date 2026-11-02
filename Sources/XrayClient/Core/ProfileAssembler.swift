@@ -30,6 +30,8 @@ enum ProfileAssembler {
         var subscriptionGroups: [ServerGroup] = []
         var clashSecret: String = ""
         var cacheFilePath: String = ""
+        /// The resolvers macOS is using right now. See `routedResolvers`.
+        var systemResolvers: [String] = []
     }
 
     /// Where the core keeps its selector choices and downloaded rule-sets when
@@ -86,6 +88,8 @@ enum ProfileAssembler {
             }
             tun.routeExcludeAddress = openedExcludes(tun.routeExcludeAddress,
                                                      for: profile.rules)
+            tun.routeExcludeAddress = routedResolvers(tun.routeExcludeAddress,
+                                                      resolvers: input.systemResolvers)
             profile.tun = tun
         }
         return profile
@@ -110,6 +114,30 @@ enum ProfileAssembler {
         return excludes.filter { entry in
             guard let range = IPRange(entry) else { return true }
             return !claimed.contains { range.overlaps($0) }
+        }
+    }
+
+    /// Cuts the system's own resolvers out of the excluded ranges.
+    ///
+    /// Most home networks hand out the router as the DNS server, and the
+    /// router is on the LAN the tunnel keeps out. So every lookup an app made
+    /// through the system went straight to the router and the provider behind
+    /// it, never reaching `hijack-dns`: apps got the provider's answers —
+    /// blocked or rewritten names included — while every indicator said the
+    /// tunnel was up. Browsers with their own DNS-over-HTTPS were fine, which
+    /// is why only "some apps" broke. With the resolver's own address routed
+    /// into the tunnel, its queries are hijacked like any other; the rest of
+    /// the LAN still stays off it.
+    static func routedResolvers(_ excludes: [String], resolvers: [String]) -> [String] {
+        let holes = resolvers.compactMap { IPRange($0) }.filter { $0.prefix == 32 }
+        guard !holes.isEmpty else { return excludes }
+        return excludes.flatMap { entry -> [String] in
+            guard let range = IPRange(entry) else { return [entry] }
+            var pieces = [range]
+            for hole in holes {
+                pieces = pieces.flatMap { $0.subtracting(hole) }
+            }
+            return pieces == [range] ? [entry] : pieces.map(\.cidr)
         }
     }
 

@@ -20,7 +20,7 @@ struct XrayClientApp: App {
                 .veilEnvironment(store: store, connection: connection,
                                  pinger: pinger, loc: loc, control: control,
                                  updater: updater)
-                .frame(minWidth: 760, minHeight: 520)
+                .frame(minWidth: CompactLayout.minimumWidth, minHeight: 520)
                 .onAppear { startUp() }
         }
         .windowResizability(.contentSize)
@@ -106,6 +106,7 @@ struct XrayClientApp: App {
                 connection.connect(to: server)
             }
         }
+        SubscriptionFetcher.purgeLegacyCache()
         Task { await SubscriptionService.refreshDue(store) }
         // Warm the process catalog so the control API's /v1/apps has data
         // before the picker is ever opened.

@@ -193,3 +193,38 @@ final class TunConfigTests: XCTestCase {
     }
 
 }
+
+/// The router is usually the DNS server, and it sits in a range the tunnel
+/// excludes — so system lookups bypassed `hijack-dns` entirely.
+final class ResolverRoutingTests: XCTestCase {
+
+    func testTheResolverIsCutOutOfItsExcludedRange() {
+        let result = ProfileAssembler.routedResolvers(
+            ["192.168.0.0/16", "10.0.0.0/8"], resolvers: ["192.168.1.1"])
+        XCTAssertFalse(result.contains("192.168.0.0/16"))
+        XCTAssertTrue(result.contains("10.0.0.0/8"))
+        let ranges = result.compactMap(IPRange.init)
+        let resolver = IPRange("192.168.1.1")!
+        XCTAssertFalse(ranges.contains { $0.overlaps(resolver) }, "the resolver must be routed")
+        for neighbour in ["192.168.1.0", "192.168.1.2", "192.168.0.1", "192.168.255.254"] {
+            let address = IPRange(neighbour)!
+            XCTAssertTrue(ranges.contains { $0.contains(address) }, "\(neighbour) stays off the tunnel")
+        }
+        XCTAssertEqual(result.count, 16 + 1)
+    }
+
+    func testPublicResolversLeaveTheExcludesAlone() {
+        let excludes = ["192.168.0.0/16", "fe80::/10"]
+        XCTAssertEqual(ProfileAssembler.routedResolvers(excludes, resolvers: ["1.1.1.1", "fe80::1"]),
+                       excludes)
+    }
+
+    func testTheTunInboundRoutesTheResolver() {
+        var input = ProfileAssembler.Input()
+        input.includeTun = true
+        input.systemResolvers = ["192.168.1.1"]
+        let excludes = ProfileAssembler.profile(input).tun?.routeExcludeAddress ?? []
+        XCTAssertFalse(excludes.contains("192.168.0.0/16"))
+        XCTAssertFalse(excludes.compactMap(IPRange.init).contains { $0.overlaps(IPRange("192.168.1.1")!) })
+    }
+}

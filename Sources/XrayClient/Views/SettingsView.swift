@@ -11,6 +11,7 @@ struct SettingsView: View {
     @Environment(ServerStore.self) private var store
     @Environment(ConnectionManager.self) private var connection
     @Environment(UpdateChecker.self) private var updater
+    @Environment(PingTester.self) private var pinger
     @Environment(Loc.self) private var loc
     @Environment(\.openWindow) private var openWindow
 
@@ -179,6 +180,33 @@ struct SettingsView: View {
                 HintLabel(loc("Show the Sources tab"), loc("The page that says where the servers came from, what each source returned and what it could not use. Hide it once your subscriptions are set up; everything on it stays available here."))
             }
             .onChange(of: store.settings.showSourcesTab) { _, _ in store.save() }
+        }
+
+        Section(loc("Ping")) {
+            Picker(selection: $store.settings.pingMode) {
+                ForEach(PingMode.allCases) { mode in Text(loc(mode.title)).tag(mode) }
+            } label: {
+                HintLabel(loc("Ping mode"), loc("TCP and ICMP time the way to the server itself. Proxy HEAD and Proxy GET send a request through the server and time the answer, which also catches a node that accepts connections but carries nothing."))
+            }
+            .onChange(of: store.settings.pingMode) { _, mode in
+                pinger.mode = mode
+                pinger.clear()
+                store.save()
+            }
+            Text(loc(store.settings.pingMode.detail))
+                .font(.caption).foregroundStyle(.secondary)
+            if store.settings.pingMode.usesProxy {
+                TextField(loc("Test URL"), text: $store.settings.pingURL,
+                          prompt: Text(verbatim: PingMode.defaultURL))
+                    .onSubmit {
+                        pinger.probeURL = store.settings.effectivePingURL
+                        store.save()
+                    }
+                    .onChange(of: store.settings.pingURL) { _, _ in
+                        pinger.probeURL = store.settings.effectivePingURL
+                        store.save()
+                    }
+            }
         }
 
         Section(loc("Window")) {

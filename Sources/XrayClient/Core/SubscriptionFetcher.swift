@@ -6,6 +6,24 @@ enum SubscriptionFetcher {
 
     private static let log = Logger(subsystem: "com.veil.client", category: "sub-fetch")
 
+    /// A session that never caches. `URLSession.shared` keeps responses in the
+    /// on-disk `URLCache` and serves them back whenever a panel or the CDN in
+    /// front of it sends `Cache-Control: max-age` — so "refresh" kept returning
+    /// the node list from hours ago, with the hosts the provider had already
+    /// moved. The body is also a secret and has no business on disk.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        return URLSession(configuration: config)
+    }()
+
+    /// Drops whatever earlier builds left in the shared cache: subscription
+    /// bodies fetched through `URLSession.shared`.
+    static func purgeLegacyCache() {
+        URLCache.shared.removeAllCachedResponses()
+    }
+
     struct Result {
         var payload: SubscriptionPayload
         var metadata: SubscriptionMetadata
@@ -45,8 +63,13 @@ enum SubscriptionFetcher {
             throw LinkParseError.malformed(urlString)
         }
 
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 20
+        var request = URLRequest(url: url,
+                                 cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                 timeoutInterval: 20)
+        // Ask every cache on the path — the panel's own and a CDN's — for a
+        // fresh copy too.
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         // The HWID goes in exactly one place. Putting it in the query string as
         // well would write it into the panel's access log, and putting it in
         // the User-Agent would show it to every proxy on the path.
@@ -67,7 +90,7 @@ enum SubscriptionFetcher {
             os=\(DeviceInfo.osName, privacy: .public) \(DeviceInfo.osVersion, privacy: .public)
             """)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         var metadata = SubscriptionMetadata()
         if let http = response as? HTTPURLResponse {

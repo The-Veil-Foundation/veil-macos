@@ -394,11 +394,33 @@ final class ServerStore {
     static let ownGroupsSourceID = UUID(uuidString: "00000000-0000-0000-0000-00000000C0DE")!
 
     func listSections(filter: ListFilter) -> [ListSection] {
-        ServerListBuilder.sections(sources: listSources,
-                                   annotations: settings.nodeAnnotations,
-                                   grouping: settings.listGrouping,
-                                   filter: filter,
-                                   autoTags: settings.autoTags)
+        var sections = ServerListBuilder.sections(sources: listSources,
+                                                  annotations: settings.nodeAnnotations,
+                                                  grouping: settings.listGrouping,
+                                                  filter: filter,
+                                                  autoTags: settings.autoTags)
+        let folded = Set(settings.collapsedFacets)
+        if !folded.isEmpty {
+            for index in sections.indices where sections[index].subscriptionID == nil {
+                sections[index].isCollapsed = folded.contains(facetKey(sections[index].id))
+            }
+        }
+        return sections
+    }
+
+    /// Folds or unfolds a country, tag or protocol section.
+    func toggleFacet(_ sectionID: String) {
+        let key = facetKey(sectionID)
+        if let index = settings.collapsedFacets.firstIndex(of: key) {
+            settings.collapsedFacets.remove(at: index)
+        } else {
+            settings.collapsedFacets.append(key)
+        }
+        save()
+    }
+
+    private func facetKey(_ sectionID: String) -> String {
+        "\(settings.listGrouping.rawValue):\(sectionID)"
     }
 
     // MARK: - Disk
