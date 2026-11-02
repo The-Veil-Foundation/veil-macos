@@ -12,14 +12,15 @@
 <p align="center">
   <a href="https://faustyu1.github.io/veil/">Сайт</a> ·
   <a href="https://github.com/The-Veil-Foundation/veil-ios">iOS</a> ·
-  <a href="https://github.com/faustyu1/veil/releases">Скачать</a> ·
-  <a href="https://github.com/faustyu1/veil/issues">Issues</a>
+  <a href="https://github.com/The-Veil-Foundation/veil-android">Android</a> ·
+  <a href="https://github.com/The-Veil-Foundation/veil-macos/releases">Скачать</a> ·
+  <a href="https://github.com/The-Veil-Foundation/veil-macos/issues">Issues</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/faustyu1/veil/releases/latest"><img src="https://img.shields.io/github/v/release/faustyu1/veil" alt="Release"></a>
+  <a href="https://github.com/The-Veil-Foundation/veil-macos/releases/latest"><img src="https://img.shields.io/github/v/release/The-Veil-Foundation/veil-macos" alt="Release"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
-  <a href="https://github.com/faustyu1/veil/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/faustyu1/veil/ci.yml?branch=main&label=build" alt="Build"></a>
+  <a href="https://github.com/The-Veil-Foundation/veil-macos/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/The-Veil-Foundation/veil-macos/ci.yml?branch=main&label=build" alt="Build"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-black?logo=apple&logoColor=white" alt="macOS 14+">
 </p>
 
@@ -47,7 +48,7 @@ v2RayTun: профили подписок, подключение в один к
 ## Установка
 
 Скачайте `Veil.app.zip` для Apple Silicon или `Veil-x86_64.app.zip` для Intel Mac из
-[последнего релиза](https://github.com/faustyu1/veil/releases/latest), распакуйте и
+[последнего релиза](https://github.com/The-Veil-Foundation/veil-macos/releases/latest), распакуйте и
 перенесите **Veil.app** в `/Applications`.
 
 Приложение подписано ad-hoc, поэтому при первом запуске нажмите правой кнопкой → **Открыть**
@@ -146,7 +147,7 @@ SwiftUI-приложение (Veil)
 ## Сборка из исходников
 
 ```bash
-git clone https://github.com/faustyu1/veil.git && cd veil
+git clone https://github.com/The-Veil-Foundation/veil-macos.git && cd veil-macos
 
 Scripts/fetch-xray.sh        # встроенные ядра, архитектура определяется сама
 Scripts/fetch-singbox.sh
@@ -165,11 +166,13 @@ swift test
 Нужен тулчейн Swift 6 (Xcode 16+). Полная настройка окружения, стиль кода и чек-лист для PR —
 в [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## iOS
+## Другие платформы
 
-Приложение для iPhone и iPad живёт в **[veil-ios](https://github.com/The-Veil-Foundation/veil-ios)**.
-Оно собирает `Sources/XrayClient/Models` и `Core` из этого репозитория через submodule, так что
-изменения там попадают в оба приложения.
+- **iOS / iPadOS** — [veil-ios](https://github.com/The-Veil-Foundation/veil-ios). Собирает
+  `Sources/XrayClient/Models` и `Core` из этого репозитория через submodule, так что изменения там
+  попадают в оба приложения.
+- **Android / Android TV** — [veil-android](https://github.com/The-Veil-Foundation/veil-android),
+  порт iOS-приложения на Kotlin Multiplatform с тем же ядром Xray.
 
 ## Структура проекта
 
@@ -204,11 +207,11 @@ docs/                       сайт
 
 ## История звёзд
 
-<a href="https://star-history.com/#faustyu1/veil&Date">
+<a href="https://star-history.com/#The-Veil-Foundation/veil-macos&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=faustyu1/veil&type=Date&theme=dark">
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=faustyu1/veil&type=Date">
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=faustyu1/veil&type=Date">
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=The-Veil-Foundation/veil-macos&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=The-Veil-Foundation/veil-macos&type=Date">
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=The-Veil-Foundation/veil-macos&type=Date">
   </picture>
 </a>
 
