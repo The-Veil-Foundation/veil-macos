@@ -83,6 +83,12 @@ if [ -f "${ROOT}/Resources/AppIcon.icns" ]; then
   cp "${ROOT}/Resources/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
   ICON_LINE="  <key>CFBundleIconFile</key><string>AppIcon</string>"
 fi
+# The Liquid Glass icon, compiled from Resources/AppIcon.icon by make-icon.sh.
+if [ -f "${ROOT}/Resources/Assets.car" ]; then
+  cp "${ROOT}/Resources/Assets.car" "${APP_DIR}/Contents/Resources/Assets.car"
+  ICON_LINE="${ICON_LINE}
+  <key>CFBundleIconName</key><string>AppIcon</string>"
+fi
 
 # Info.plist (LSUIElement=false so it shows in the Dock with a window)
 cat > "${APP_DIR}/Contents/Info.plist" <<PLIST

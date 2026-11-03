@@ -5,6 +5,12 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Changed
+
+- New app icon: the split Veil shield on graphite, made in Icon Composer
+  (`Resources/AppIcon.icon`). macOS 26 draws it as a Liquid Glass icon with
+  its dark, clear and tinted looks; older systems get the same artwork.
+
 ### Removed
 
 - The website. It moved, with its history, to
