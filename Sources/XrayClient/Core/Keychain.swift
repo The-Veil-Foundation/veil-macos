@@ -151,6 +151,6 @@ enum KeychainAccount {
     static func subscriptionURL(_ id: UUID) -> String { "sub.url.\(id.uuidString)" }
     /// The HWID Veil presents to one subscription's panel.
     static func subscriptionHWID(_ id: UUID) -> String { "sub.hwid.\(id.uuidString)" }
-    /// Bearer token for the local control API.
-    static let apiToken = "api.token"
+    /// Bearer token of the old HTTP control API. Only read to delete it.
+    static let legacyAPIToken = "api.token"
 }

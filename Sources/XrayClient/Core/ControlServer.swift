@@ -1,7 +1,6 @@
 // macOS-only.
 #if os(macOS)
 import Foundation
-import Network
 
 /// Parses just enough HTTP to serve the control API.
 ///
@@ -64,14 +63,8 @@ enum ControlHTTP {
             }
         }
 
-        var token: String?
-        if let authorization = headers["authorization"],
-           authorization.lowercased().hasPrefix("bearer ") {
-            token = String(authorization.dropFirst(7)).trimmingCharacters(in: .whitespaces)
-        }
-
         return .request(ControlRequest(method: method, path: path, query: query,
-                                       body: Data(body), token: token,
+                                       body: Data(body),
                                        origin: headers["origin"]))
     }
 
@@ -79,7 +72,7 @@ enum ControlHTTP {
         var head = "HTTP/1.1 \(response.status) \(reason(response.status))\r\n"
         head += "Content-Type: \(response.contentType)\r\n"
         head += "Content-Length: \(response.body.count)\r\n"
-        // The API is for a local caller with a token, never for a web page.
+        // The API is for a local process, never for a web page.
         head += "Access-Control-Allow-Origin: null\r\n"
         head += "Cache-Control: no-store\r\n"
         head += "Connection: close\r\n\r\n"
@@ -90,7 +83,6 @@ enum ControlHTTP {
         switch status {
         case 200: return "OK"
         case 400: return "Bad Request"
-        case 401: return "Unauthorized"
         case 403: return "Forbidden"
         case 404: return "Not Found"
         case 500: return "Internal Server Error"
@@ -107,164 +99,194 @@ enum ControlHTTP {
     }
 }
 
-/// Serves the control API on the loopback.
+
+/// Where the app listens and `Veil mcp` connects.
 ///
-/// Bound to 127.0.0.1 and gated on a bearer token that lives in the keychain,
-/// because anything that can reach this port can change where the machine's
-/// traffic goes.
+/// A Unix socket in Veil's own `0700` support directory, so the file system
+/// decides who may talk to it: the same user account, and nobody else. That
+/// is the whole of the authentication — there is no token to copy, leak or
+/// rotate, and no port a web page could reach.
+enum ControlSocket {
+    static var url: URL {
+        let fm = FileManager.default
+        let base = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                appropriateFor: nil, create: true))
+            ?? fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        return base.appendingPathComponent("XrayClient/mcp.sock")
+    }
+
+    /// The `sockaddr_un` for `path`, or nil when it does not fit (104 bytes).
+    static func address(_ path: String) -> sockaddr_un? {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let bytes = Array(path.utf8)
+        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { return nil }
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+        return address
+    }
+}
+
+/// Serves the control API on a Unix socket for the MCP bridge.
+///
+/// Anything that can reach this socket can change where the machine's traffic
+/// goes, so it exists only while AI access is allowed, lives in a directory
+/// only the user can enter, is itself `0600`, and still checks that every peer
+/// runs as the same user.
 @MainActor
 @Observable
 final class ControlServer {
 
     private(set) var isRunning = false
     private(set) var lastError: String?
-    private(set) var port: Int = 0
+    private(set) var path = ""
 
     var onLog: ((String) -> Void)?
 
-    private var listener: NWListener?
+    private var source: DispatchSourceRead?
+    private var listenFD: Int32 = -1
     private var router: ControlRouter?
 
-    /// The token callers present. Created once and kept in the keychain so an
-    /// assistant configured yesterday still works today.
-    static func token() -> String {
-        if let existing = Keychain.get(account: KeychainAccount.apiToken),
-           !existing.isEmpty {
-            return existing
-        }
-        let fresh = (UUID().uuidString + UUID().uuidString)
-            .replacingOccurrences(of: "-", with: "")
-            .lowercased()
-        _ = Keychain.set(fresh, account: KeychainAccount.apiToken)
-        return fresh
-    }
-
-    /// Forgets the current token and issues a new one, which revokes every
-    /// caller configured with the old one.
-    @discardableResult
-    static func rotateToken() -> String {
-        _ = Keychain.remove(account: KeychainAccount.apiToken)
-        return token()
-    }
-
-    func start(port: Int, backend: ControlBackend, token: String = ControlServer.token()) {
+    func start(at path: String = ControlSocket.url.path, backend: ControlBackend) {
         stop()
-        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else {
-            lastError = "port \(port) is out of range"
+        SecureFile.ensureDirectory(URL(fileURLWithPath: path).deletingLastPathComponent())
+        guard var address = ControlSocket.address(path) else {
+            lastError = "socket path is too long"
             return
         }
-        let parameters = NWParameters.tcp
-        // Loopback only: nothing off this machine may reach the API, whatever
-        // the firewall happens to allow. The interface requirement alone still
-        // bound the wildcard address — the socket showed up as `*:port` — so the
-        // listener is pinned to 127.0.0.1 itself.
-        parameters.requiredInterfaceType = .loopback
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: nwPort)
-        parameters.allowLocalEndpointReuse = true
+        // A socket file left by a crash refuses the bind until it is gone.
+        unlink(path)
 
-        do {
-            let listener = try NWListener(using: parameters)
-            self.router = ControlRouter(backend: backend, token: token)
-            listener.newConnectionHandler = { [weak self] connection in
-                Task { @MainActor in self?.accept(connection) }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return fail("socket") }
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
-            listener.stateUpdateHandler = { [weak self] state in
-                Task { @MainActor in
-                    switch state {
-                    case .ready:
-                        self?.isRunning = true
-                        self?.lastError = nil
-                    case .failed(let error):
-                        self?.isRunning = false
-                        self?.lastError = error.localizedDescription
-                        self?.onLog?("[control] listener failed: \(error.localizedDescription)\n")
-                    case .cancelled:
-                        self?.isRunning = false
-                    default:
-                        break
-                    }
-                }
-            }
-            listener.start(queue: .main)
-            self.listener = listener
-            self.port = port
-        } catch {
-            lastError = error.localizedDescription
-            onLog?("[control] could not listen on \(port): \(error.localizedDescription)\n")
         }
+        guard bound == 0, chmod(path, 0o600) == 0, listen(fd, 8) == 0 else {
+            fail("listen")
+            close(fd)
+            unlink(path)
+            return
+        }
+        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
+
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.acceptPending() }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+
+        self.source = source
+        self.listenFD = fd
+        self.router = ControlRouter(backend: backend)
+        self.path = path
+        self.isRunning = true
+        self.lastError = nil
     }
 
-    /// Brings the listener in line with the settings — started on the right
-    /// port when the API is on, stopped when it is off.
+    /// Listens while AI access is allowed, and not at all under No AI.
     func sync(settings: AppSettings, store: ServerStore, connection: ConnectionManager) {
-        guard settings.veilAPIEnabled else {
+        guard !settings.noAI else {
             stop()
+            // A quit does not run `stop`, so an earlier session may have left
+            // its socket file behind. Under No AI there must be none at all.
+            unlink(ControlSocket.url.path)
             return
         }
-        if isRunning && port == settings.veilAPIPort { return }
-        start(port: settings.veilAPIPort,
-              backend: AppControlBackend(store: store, connection: connection))
+        if isRunning { return }
+        start(backend: AppControlBackend(store: store, connection: connection))
     }
 
     func stop() {
-        listener?.cancel()
-        listener = nil
+        source?.cancel()
+        source = nil
+        listenFD = -1
         router = nil
+        if !path.isEmpty { unlink(path) }
         isRunning = false
     }
 
-    static func isLoopback(_ endpoint: NWEndpoint) -> Bool {
-        guard case .hostPort(let host, _) = endpoint else { return false }
-        switch host {
-        case .ipv4(let address): return address.isLoopback
-        case .ipv6(let address): return address.isLoopback
-        case .name(let name, _): return name == "localhost"
-        @unknown default: return false
-        }
+    private func fail(_ call: String) {
+        let message = "\(call): \(String(cString: strerror(errno)))"
+        lastError = message
+        onLog?("[control] \(message)\n")
     }
 
     // MARK: - Connections
 
-    private func accept(_ connection: NWConnection) {
-        // Belt and braces: the listener is already bound to the loopback, but
-        // a peer that is not on it has no business here either way.
-        guard ControlServer.isLoopback(connection.endpoint) else {
-            connection.cancel()
-            return
+    private func acceptPending() {
+        while listenFD >= 0 {
+            let client = accept(listenFD, nil, nil)
+            guard client >= 0 else { return }
+            // The directory already keeps other users out; this keeps them out
+            // even if someone loosens its permissions.
+            var uid: uid_t = 0
+            var gid: gid_t = 0
+            guard getpeereid(client, &uid, &gid) == 0, uid == getuid() else {
+                close(client)
+                continue
+            }
+            _ = fcntl(client, F_SETFL, 0)
+            var timeout = timeval(tv_sec: 5, tv_usec: 0)
+            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                       socklen_t(MemoryLayout<timeval>.size))
+            var on: Int32 = 1
+            setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on,
+                       socklen_t(MemoryLayout<Int32>.size))
+            serve(client)
         }
-        connection.start(queue: .main)
-        receive(connection, buffer: Data())
     }
 
-    private func receive(_ connection: NWConnection, buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
-            [weak self] chunk, _, isComplete, error in
+    private func serve(_ client: Int32) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let parsed = ControlServer.readRequest(client)
             Task { @MainActor in
-                guard let self else { connection.cancel(); return }
-                if error != nil { connection.cancel(); return }
-                var buffer = buffer
-                if let chunk { buffer.append(chunk) }
-
-                switch ControlHTTP.parse(buffer) {
-                case .incomplete:
-                    if isComplete { connection.cancel(); return }
-                    self.receive(connection, buffer: buffer)
-                case .failure(let message):
-                    self.send(.error(message, status: 400), on: connection)
+                let response: ControlResponse
+                switch parsed {
                 case .request(let request):
-                    guard let router = self.router else {
-                        self.send(.error("control api is off", status: 403), on: connection)
-                        return
-                    }
-                    self.send(router.handle(request), on: connection)
+                    response = self?.router?.handle(request)
+                        ?? .error("AI access is switched off in Veil", status: 403)
+                case .failure(let message):
+                    response = .error(message, status: 400)
+                case .incomplete:
+                    response = .error("incomplete request", status: 400)
+                }
+                let data = ControlHTTP.response(response)
+                DispatchQueue.global(qos: .userInitiated).async {
+                    ControlServer.writeAll(data, to: client)
+                    close(client)
                 }
             }
         }
     }
 
-    private func send(_ response: ControlResponse, on connection: NWConnection) {
-        connection.send(content: ControlHTTP.response(response),
-                        completion: .contentProcessed { _ in connection.cancel() })
+    /// Reads until `ControlHTTP` has a whole request, or the peer stops.
+    nonisolated static func readRequest(_ fd: Int32) -> ControlHTTP.ParseResult {
+        var buffer = Data()
+        var chunk = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let parsed = ControlHTTP.parse(buffer)
+            if case .incomplete = parsed {} else { return parsed }
+            let count = read(fd, &chunk, chunk.count)
+            guard count > 0 else { return .incomplete }
+            buffer.append(chunk, count: count)
+        }
+    }
+
+    nonisolated static func writeAll(_ data: Data, to fd: Int32) {
+        data.withUnsafeBytes { raw in
+            guard var pointer = raw.baseAddress else { return }
+            var left = raw.count
+            while left > 0 {
+                let written = write(fd, pointer, left)
+                guard written > 0 else { return }
+                pointer += written
+                left -= written
+            }
+        }
     }
 }
 #endif
