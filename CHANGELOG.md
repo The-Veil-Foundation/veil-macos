@@ -5,6 +5,8 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-11-05
+
 ### Added
 
 - `Veil mcp`: the app binary is now an MCP server on stdio. Point Claude,
