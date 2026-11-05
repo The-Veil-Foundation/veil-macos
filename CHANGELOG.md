@@ -5,6 +5,15 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- `Veil mcp`: the app binary is now an MCP server on stdio. Point Claude,
+  Cursor or any MCP client at `/Applications/Veil.app/Contents/MacOS/Veil`
+  with the argument `mcp` (Settings → Advanced → Copy MCP config). It starts
+  Veil in the background if it is not running.
+- **No AI** switch in Settings → Advanced. When on, Veil does not open the
+  socket assistants talk to, and every MCP call is refused with that reason.
+
 ### Changed
 
 - New app icon: the split Veil shield on graphite, made in Icon Composer
@@ -13,6 +22,11 @@ All notable changes to Veil are recorded here. Versions follow
 
 ### Removed
 
+- The HTTP control API on `127.0.0.1:9091`, its bearer token, port setting
+  and "Let other programs configure Veil" switch. The same endpoints are now
+  served over a `0600` Unix socket only the user's account can open, and only
+  `Veil mcp` needs to know about it. The old token is deleted from the
+  Keychain on launch.
 - The website. It moved, with its history, to
   [The-Veil-Foundation/veil-site](https://github.com/The-Veil-Foundation/veil-site)
   and is still served at <https://veil.faustyu.xyz>. `docs/` keeps the control

@@ -7,8 +7,6 @@ import XCTest
 @MainActor
 final class ControlAPITests: XCTestCase {
 
-    private let token = "0123456789abcdef"
-
     private final class FakeBackend: ControlBackend {
         var storedRules: [RoutingRule] = []
         var storedGroups: [ServerGroup] = []
@@ -61,16 +59,15 @@ final class ControlAPITests: XCTestCase {
     }
 
     private func router(_ backend: FakeBackend) -> ControlRouter {
-        ControlRouter(backend: backend, token: token)
+        ControlRouter(backend: backend)
     }
 
     private func request(_ method: String, _ path: String,
                          body: Data = Data(),
-                         token: String? = "0123456789abcdef",
                          origin: String? = nil,
                          query: [String: String] = [:]) -> ControlRequest {
         ControlRequest(method: method, path: path, query: query, body: body,
-                       token: token, origin: origin)
+                       origin: origin)
     }
 
     private func object(_ response: ControlResponse) -> Any? {
@@ -79,29 +76,12 @@ final class ControlAPITests: XCTestCase {
 
     // MARK: - Access
 
-    func testRefusesAMissingToken() {
-        let response = router(FakeBackend()).handle(request("GET", "/v1/state", token: nil))
-        XCTAssertEqual(response.status, 401)
-    }
-
-    func testRefusesTheWrongToken() {
-        let response = router(FakeBackend())
-            .handle(request("GET", "/v1/state", token: "0123456789abcdee"))
-        XCTAssertEqual(response.status, 401)
-    }
-
     func testRefusesARequestFromAWebPage() {
         // A page the user happens to have open can reach the loopback. It must
         // not be able to drive the tunnel even if it guesses the port.
         let response = router(FakeBackend())
             .handle(request("GET", "/v1/state", origin: "https://example.com"))
         XCTAssertEqual(response.status, 403)
-    }
-
-    func testTokenComparisonRejectsDifferentLengthsAndEmpties() {
-        XCTAssertFalse(ControlRouter.constantTimeEqual("abc", "abcd"))
-        XCTAssertFalse(ControlRouter.constantTimeEqual("", ""))
-        XCTAssertTrue(ControlRouter.constantTimeEqual("abcd", "abcd"))
     }
 
     // MARK: - Endpoints
@@ -188,17 +168,15 @@ final class ControlAPITests: XCTestCase {
         ControlHTTP.parse(Data(text.utf8))
     }
 
-    func testParsesMethodPathQueryAndToken() {
+    func testParsesMethodPathAndQuery() {
         guard case .request(let request) = parse(
-            "GET /v1/apps?q=google%20chrome&limit=5 HTTP/1.1\r\n"
-            + "Authorization: Bearer abc123\r\n\r\n") else {
+            "GET /v1/apps?q=google%20chrome&limit=5 HTTP/1.1\r\n\r\n") else {
             return XCTFail("did not parse")
         }
         XCTAssertEqual(request.method, "GET")
         XCTAssertEqual(request.path, "/v1/apps")
         XCTAssertEqual(request.query["q"], "google chrome")
         XCTAssertEqual(request.query["limit"], "5")
-        XCTAssertEqual(request.token, "abc123")
     }
 
     func testWaitsForTheWholeBody() {

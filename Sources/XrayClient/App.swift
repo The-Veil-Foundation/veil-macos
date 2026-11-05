@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 
-@main
 struct XrayClientApp: App {
     @State private var store = ServerStore()
     @State private var connection = ConnectionManager()
@@ -86,6 +85,8 @@ struct XrayClientApp: App {
             connection?.appendLog(line)
         }
         control.sync(settings: store.settings, store: store, connection: connection)
+        // The HTTP API and its bearer token are gone; the socket needs neither.
+        _ = Keychain.remove(account: KeychainAccount.legacyAPIToken)
         appDelegate.closeToTray = store.settings.closeToTray
         appDelegate.dockHidden = store.settings.hideDockIcon
         DockIcon.setHidden(store.settings.hideDockIcon)

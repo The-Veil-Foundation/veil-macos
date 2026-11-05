@@ -113,7 +113,6 @@ struct ControlRequest {
     var path: String
     var query: [String: String] = [:]
     var body: Data = Data()
-    var token: String?
     /// Present when a browser made the request. Any value at all is a reason
     /// to refuse: a page the user happened to open must not be able to drive
     /// the tunnel just because it can reach the loopback.
@@ -163,15 +162,10 @@ struct ControlResponse {
 @MainActor
 struct ControlRouter {
     let backend: ControlBackend
-    let token: String
 
     func handle(_ request: ControlRequest) -> ControlResponse {
         if request.origin != nil {
             return .error("cross-origin requests are not accepted", status: 403)
-        }
-        guard let presented = request.token,
-              ControlRouter.constantTimeEqual(presented, token) else {
-            return .error("missing or invalid bearer token", status: 401)
         }
 
         let path = request.path.hasSuffix("/") && request.path.count > 1
@@ -314,20 +308,11 @@ struct ControlRouter {
         }
     }
 
-    /// Compares without leaking where two tokens start to differ.
-    static func constantTimeEqual(_ lhs: String, _ rhs: String) -> Bool {
-        let a = Array(lhs.utf8), b = Array(rhs.utf8)
-        guard a.count == b.count, !a.isEmpty else { return false }
-        var difference: UInt8 = 0
-        for index in a.indices { difference |= a[index] ^ b[index] }
-        return difference == 0
-    }
-
     /// Enough for a caller to work the API without documentation — which is
     /// the point: the assistant reads this first and goes from there.
     static let schema: [String: Any] = [
         "name": "Veil control API",
-        "auth": "Authorization: Bearer <token from Veil → Settings → Control API>",
+        "auth": "none: reached through `Veil mcp`, over a socket only this user can open",
         "notes": [
             "Rules are ordered; the first match wins.",
             "A rule's target is \"proxy\", \"direct\", \"block\", \"server:<uuid>\" or \"group:<uuid>\".",

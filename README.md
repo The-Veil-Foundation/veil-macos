@@ -183,7 +183,7 @@ Sources/VeilHelperKit/      XPC protocol + input validation shared with the help
 Sources/VeilHelper/         the privileged launchd daemon (routes, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/                      parsers, link builder, config builders, security, routing
-docs/                       agents.md (local control API contract), design specs
+docs/                       agents.md (MCP tools for assistants), design specs
 ```
 
 ## Contributing

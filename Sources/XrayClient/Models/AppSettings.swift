@@ -152,11 +152,10 @@ struct AppSettings: Codable, Equatable {
     var clashAPIEnabled: Bool = false
     var controlAPIPort: Int = 9090
 
-    // Veil's own control API: read and write the routing configuration from
-    // outside the app. Off by default — it can change where the machine's
-    // traffic goes, so it is turned on deliberately or not at all.
-    var veilAPIEnabled: Bool = false
-    var veilAPIPort: Int = 9091
+    // No AI: when on, Veil does not open the socket `Veil mcp` talks to, so no
+    // assistant can read or change the routing. Off by default; the socket is
+    // reachable only by this user account, like the store file itself.
+    var noAI: Bool = false
 
     // Startup
     var autoConnectOnLaunch: Bool = false
@@ -242,8 +241,7 @@ struct AppSettings: Codable, Equatable {
         tunStack = get(.tunStack, "")
         clashAPIEnabled = get(.clashAPIEnabled, false)
         controlAPIPort = get(.controlAPIPort, 9090)
-        veilAPIEnabled = get(.veilAPIEnabled, false)
-        veilAPIPort = get(.veilAPIPort, 9091)
+        noAI = get(.noAI, false)
         autoConnectOnLaunch = get(.autoConnectOnLaunch, false)
         launchAtLogin = get(.launchAtLogin, false)
         notifyOnConnect = get(.notifyOnConnect, false)

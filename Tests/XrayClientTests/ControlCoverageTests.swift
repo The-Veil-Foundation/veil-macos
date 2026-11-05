@@ -12,8 +12,6 @@ import XCTest
 @MainActor
 final class ControlCoverageTests: XCTestCase {
 
-    private let token = "0123456789abcdef"
-
     func testSourcesAreListedWithWhatEachOneProduced() throws {
         let backend = FakeBackend()
         backend.storedSources = [
@@ -196,14 +194,14 @@ final class ControlCoverageTests: XCTestCase {
     }
 
     private func router(_ backend: FakeBackend) -> ControlRouter {
-        ControlRouter(backend: backend, token: token)
+        ControlRouter(backend: backend)
     }
 
     private func request(_ method: String, _ path: String,
                          body: Data = Data(),
                          query: [String: String] = [:]) -> ControlRequest {
         ControlRequest(method: method, path: path, query: query, body: body,
-                       token: token, origin: nil)
+                       origin: nil)
     }
 
     private func object(_ response: ControlResponse) -> Any? {

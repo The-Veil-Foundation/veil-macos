@@ -58,7 +58,7 @@ Sources/VeilHelperKit/          XPC protocol + input validation shared with the 
 Sources/VeilHelper/             the privileged launchd daemon
 Scripts/                        fetch-*, cores.lock, run-app.sh, *-daemon.sh, set-version.sh
 Tests/XrayClientTests/          parsers, link builder, config builders, security, routing
-docs/                           agents.md (local control API contract), design specs
+docs/                           agents.md (MCP tools and the control contract), design specs
 ```
 
 The website (veil.faustyu.xyz) lives in
@@ -134,6 +134,14 @@ with a usage message — shipping a TUN mode that never came up.
 The current Tahoe / Liquid Glass look is gated on the SDK the binary links against, not the OS
 it runs on. If the app looks dated, check the SDK before touching any view code — CI runs
 `macos-26` for exactly this reason.
+
+### AI access goes through `Veil mcp`
+
+`Entry.swift` branches before SwiftUI starts: `Veil mcp` runs `Core/MCPBridge.swift`, a
+stdio JSON-RPC server that forwards each tool call to the running app over
+`ControlSocket` (`~/Library/Application Support/XrayClient/mcp.sock`, `0600`, same-uid
+peers only). There is no token and no TCP port. **Nothing but protocol messages may go to
+stdout in that mode** — log to stderr. `settings.noAI` removes the socket entirely.
 
 ## Validating generated configs
 

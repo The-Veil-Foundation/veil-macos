@@ -2,8 +2,8 @@ import XCTest
 @testable import XrayClient
 
 /// The router is covered without a socket elsewhere; this one proves the
-/// transport around it actually serves, and that the token is enforced by the
-/// thing listening rather than only by the tests' idea of it.
+/// Unix socket around it actually serves, with the permissions that stand in
+/// for a token, and that the MCP bridge's client speaks to it.
 
 @MainActor
 final class ControlServerLiveTests: XCTestCase {
@@ -36,28 +36,28 @@ final class ControlServerLiveTests: XCTestCase {
         func apply() {}
     }
 
-    func testServesOverTheLoopback() async throws {
+    func testServesOverTheSocketAndTheBridgeReachesIt() async throws {
         let server = ControlServer()
-        // A fixed port would collide with whatever else the machine — or CI —
-        // happens to be running.
-        guard let port = PortAllocator.free(count: 1, from: 19400).first else {
-            return XCTFail("no free port to test on")
-        }
-        server.start(port: port, backend: Backend(), token: "tok")
-        try await Task.sleep(for: .milliseconds(400))
+        // Short and private: sun_path holds 104 bytes, and the test must not
+        // touch the real app's socket.
+        let path = "/tmp/veil-test-\(getpid()).sock"
+        server.start(at: path, backend: Backend())
         XCTAssertTrue(server.isRunning, server.lastError ?? "not running")
 
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/state")!)
-        request.setValue("Bearer tok", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        var info = stat()
+        XCTAssertEqual(stat(path, &info), 0)
+        XCTAssertEqual(info.st_mode & 0o777, 0o600, "only the user may open the socket")
+
+        let call = MCPBridge.Call(method: "GET", path: "/v1/state")
+        let reply = await Task.detached { MCPBridge.exchange(call, socketPath: path) }.value
+        XCTAssertEqual(reply?.ok, true)
+        let json = try JSONSerialization.jsonObject(with: Data((reply?.text ?? "").utf8))
+            as? [String: Any]
         XCTAssertEqual(json?["connection"] as? String, "disconnected")
 
-        var bad = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/state")!)
-        bad.setValue("Bearer nope", forHTTPHeaderField: "Authorization")
-        let (_, badResponse) = try await URLSession.shared.data(for: bad)
-        XCTAssertEqual((badResponse as? HTTPURLResponse)?.statusCode, 401)
         server.stop()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+        let gone = await Task.detached { MCPBridge.exchange(call, socketPath: path) }.value
+        XCTAssertNil(gone, "nothing answers once the server stops")
     }
 }

@@ -187,7 +187,7 @@ Sources/VeilHelperKit/      XPC-протокол и валидация вход�
 Sources/VeilHelper/         привилегированный launchd-демон (маршруты, DNS, tun2socks)
 Scripts/                    fetch-*, cores.lock, run-app.sh, make-icon.sh, *-daemon.sh
 Tests/                      парсеры, сборщик ссылок, сборщики конфигов, безопасность, маршруты
-docs/                       agents.md (контракт локального API), спецификации
+docs/                       agents.md (MCP-инструменты для ассистентов), спецификации
 ```
 
 ## Участие в разработке
