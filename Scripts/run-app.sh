@@ -98,7 +98,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
-  <key>CFBundleIdentifier</key><string>dev.local.veil</string>
+  <key>CFBundleIdentifier</key><string>org.veil.app</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -121,7 +121,7 @@ if pgrep -f "${APP_DIR}/Contents/MacOS/${APP_NAME}" >/dev/null 2>&1; then
   echo "Quitting the running ${APP_NAME}..."
   # Ask politely first: a plain SIGTERM skips applicationWillTerminate, which
   # is where the tunnel is torn down, and would leave routes behind.
-  osascript -e "tell application id \"dev.local.veil\" to quit" >/dev/null 2>&1 || true
+  osascript -e "tell application id \"org.veil.app\" to quit" >/dev/null 2>&1 || true
   for _ in $(seq 1 25); do
     pgrep -f "${APP_DIR}/Contents/MacOS/${APP_NAME}" >/dev/null 2>&1 || break
     sleep 0.2

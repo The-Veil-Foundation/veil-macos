@@ -144,7 +144,7 @@ struct XrayClientApp: App {
     /// window was reopened. The system scheduler picks the moment itself, so
     /// the work lands alongside other wake-ups instead of adding its own.
     private func scheduleBackgroundRefresh() {
-        let scheduler = NSBackgroundActivityScheduler(identifier: "dev.local.veil.refresh")
+        let scheduler = NSBackgroundActivityScheduler(identifier: "org.veil.app.refresh")
         scheduler.repeats = true
         scheduler.interval = 60 * 60
         scheduler.tolerance = 15 * 60

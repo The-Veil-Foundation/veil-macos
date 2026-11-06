@@ -66,7 +66,7 @@ Helper logs are root-owned:
 
 ```bash
 sudo tail /Library/Application\ Support/Veil/helper/tun2socks.log
-log show --predicate 'subsystem == "dev.local.veil.helper"' --last 10m
+log show --predicate 'subsystem == "org.veil.app.helper"' --last 10m
 ```
 
 ### Validating generated configs
