@@ -5,6 +5,8 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-11-07
+
 ### Added
 
 - **Request as** for each subscription (Sources page, and the Add sheet).
