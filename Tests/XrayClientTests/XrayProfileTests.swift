@@ -345,3 +345,51 @@ final class XrayProfileTests: XCTestCase {
         XCTAssertEqual(process.terminationStatus, 0, output)
     }
 }
+
+/// A balancer entry follows the strategy the user picked, and the measuring
+/// ones get something to measure with.
+final class BalancerStrategyTests: XCTestCase {
+
+    private func entry() -> ProxyConfig {
+        var main = ProxyConfig(name: "Europe | Auto", proto: .vless, address: "1.1.1.1", port: 443)
+        main.uuid = "3F2504E0-4F89-11D3-9A0C-0305E82C3301"
+        var second = main
+        second.address = "2.2.2.2"
+        main.alternates = [second]
+        return main
+    }
+
+    private func balancer(_ config: [String: Any]) -> [String: Any]? {
+        ((config["routing"] as? [String: Any])?["balancers"] as? [[String: Any]])?.first
+    }
+
+    func testFastestIsTheDefaultAndIsObserved() {
+        let config = XrayConfigBuilder.build(for: entry())
+        let strategy = balancer(config)?["strategy"] as? [String: Any]
+        XCTAssertEqual(strategy?["type"] as? String, "leastPing")
+        XCTAssertEqual(balancer(config)?["fallbackTag"] as? String, "proxy-0")
+        let observatory = config["observatory"] as? [String: Any]
+        XCTAssertEqual(observatory?["subjectSelector"] as? [String], ["proxy-0", "proxy-1"])
+    }
+
+    func testMostStableUsesTheBurstObservatory() {
+        let config = XrayConfigBuilder.build(for: entry(), balancerStrategy: .leastLoad)
+        XCTAssertNotNil(config["burstObservatory"])
+        XCTAssertNil(config["observatory"])
+    }
+
+    func testRandomNeedsNoObservatory() {
+        let config = XrayConfigBuilder.build(for: entry(), balancerStrategy: .random)
+        XCTAssertEqual((balancer(config)?["strategy"] as? [String: Any])?["type"] as? String, "random")
+        XCTAssertNil(config["observatory"])
+        XCTAssertNil(balancer(config)?["fallbackTag"])
+    }
+
+    func testASingleServerHasNoBalancer() {
+        var single = entry()
+        single.alternates = nil
+        let config = XrayConfigBuilder.build(for: single)
+        XCTAssertNil(balancer(config))
+        XCTAssertNil(config["observatory"])
+    }
+}

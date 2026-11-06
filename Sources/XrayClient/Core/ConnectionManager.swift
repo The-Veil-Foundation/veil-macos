@@ -243,7 +243,8 @@ final class ConnectionManager {
             case .xray:
                 data = try XrayConfigBuilder.jsonData(for: server, ports: ports,
                                                       rules: routingRules,
-                                                      logLevel: logLevel.rawValue)
+                                                      logLevel: logLevel.rawValue,
+                                                      balancerStrategy: settings.balancerStrategy)
             case .singbox:
                 data = try SingBoxConfigBuilder.jsonData(for: server, ports: ports,
                                                          rules: routingRules,

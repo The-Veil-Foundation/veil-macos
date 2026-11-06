@@ -28,6 +28,28 @@ enum LinkParser {
         }
         let scheme = String(line[line.startIndex..<schemeEnd.lowerBound]).lowercased()
 
+        var config = try parseScheme(scheme, line: line)
+        splitServerDescription(&config)
+        return config
+    }
+
+    /// Happ's convention, which Remnawave follows for a host with a Server
+    /// Description: the fragment is `Name?serverDescription=<base64 text>`.
+    /// Without this the whole thing, base64 included, became the name.
+    static func splitServerDescription(_ config: inout ProxyConfig) {
+        guard let marker = config.name.range(of: "?serverDescription=") else { return }
+        let encoded = String(config.name[marker.upperBound...])
+        let name = String(config.name[..<marker.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { config.name = name }
+        let text = decodeBase64(encoded)
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? encoded
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        config.serverDescription = trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func parseScheme(_ scheme: String, line: String) throws -> ProxyConfig {
         switch scheme {
         case "vless":            return try parseVLESS(line)
         case "vmess":            return try parseVMess(line)

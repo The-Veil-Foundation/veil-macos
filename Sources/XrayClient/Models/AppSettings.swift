@@ -145,6 +145,10 @@ struct AppSettings: Codable, Equatable {
     var tunStrictRoute: Bool = false
     var tunStack: String = ""
 
+    /// How a balancer entry — a panel profile such as "Europe | Auto" — picks
+    /// the node it uses when Xray runs it.
+    var balancerStrategy: BalancerStrategy = .leastPing
+
     // Local control API (Clash-compatible, served by sing-box). Off unless
     // asked for: it is one more listening port, and its secret is random per
     // launch, so nothing outside Veil could use it anyway. Stored under a new
@@ -239,6 +243,7 @@ struct AppSettings: Codable, Equatable {
         useNativeTun = get(.useNativeTun, true)
         tunStrictRoute = get(.tunStrictRoute, false)
         tunStack = get(.tunStack, "")
+        balancerStrategy = get(.balancerStrategy, .leastPing)
         clashAPIEnabled = get(.clashAPIEnabled, false)
         controlAPIPort = get(.controlAPIPort, 9090)
         noAI = get(.noAI, false)
@@ -315,3 +320,28 @@ struct RoutingFingerprint: Equatable {
     var dns: DNSSettings
 }
 
+
+/// Xray's balancer strategies. sing-box has one automatic kind, `urltest`,
+/// which is always the fastest node, so this only changes what Xray does.
+enum BalancerStrategy: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// The node with the lowest measured latency. What panels ask for.
+    case leastPing
+    /// The steadiest node, from repeated latency samples.
+    case leastLoad
+    /// Each new connection to the next node in turn.
+    case roundRobin
+    /// Each new connection to a random node.
+    case random
+
+    var id: String { rawValue }
+
+    /// English `Loc` key.
+    var label: String {
+        switch self {
+        case .leastPing:  return "Fastest"
+        case .leastLoad:  return "Most stable"
+        case .roundRobin: return "Round robin"
+        case .random:     return "Random"
+        }
+    }
+}

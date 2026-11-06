@@ -66,6 +66,7 @@ enum Diagnostics {
             lines.append("  host: \(sub.url.map(Redaction.url) ?? "local")")
             lines.append("  servers: \(sub.servers.count)")
             if let format = sub.lastFormat { lines.append("  format: \(format.rawValue)") }
+            if !sub.isManual { lines.append("  request as: \((sub.requestAs ?? .automatic).rawValue)") }
             if let status = sub.hwidStatus { lines.append("  hwid: \(status.rawValue)") }
             if let interval = sub.updateIntervalHours { lines.append("  panel interval: \(interval)h") }
             if let updated = sub.lastUpdated {

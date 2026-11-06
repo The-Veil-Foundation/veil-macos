@@ -756,8 +756,17 @@ struct ServerRow: View {
             }
             Spacer()
             latencyBadge
-            Text(server.proto.rawValue.uppercased())
-                .font(.caption2).foregroundStyle(.secondary)
+            // The panel's own line about the server replaces the protocol
+            // name, as it does in the clients Remnawave wrote it for.
+            if let description = server.serverDescription {
+                Text(description)
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .help(Text(verbatim: "\(description) · \(server.proto.rawValue.uppercased())"))
+            } else {
+                Text(server.proto.rawValue.uppercased())
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
             if isActive {
                 Image(systemName: "bolt.fill").font(.caption2).foregroundStyle(.green)
             }

@@ -16,6 +16,7 @@ struct AddServerSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showScanner = false
+    @State private var requestAs: SubscriptionRequestProfile = .automatic
 
     private var input: AddInput { AddInputClassifier.classify(text) }
 
@@ -33,6 +34,14 @@ struct AddServerSheet: View {
             if case .subscription = input {
                 TextField(loc("Name (optional)"), text: $nameText)
                     .textFieldStyle(.roundedBorder)
+                // Custom stays on the Sources page, next to the field it needs.
+                Picker(loc("Request as"), selection: $requestAs) {
+                    ForEach(SubscriptionRequestProfile.allCases.filter { $0 != .custom }) { option in
+                        Text(loc(option.label)).tag(option)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
             }
 
             detectionLine
@@ -134,7 +143,7 @@ struct AddServerSheet: View {
                 let result = try await SubscriptionFetcher.fetch(
                     url,
                     hwid: store.settings.sendHwid ? DeviceID.hwid : nil,
-                    userAgent: store.settings.userAgentOverride)
+                    userAgent: requestAs.presetUserAgent ?? store.settings.userAgentOverride)
                 guard !result.servers.isEmpty else {
                     errorMessage = loc("The subscription returned no servers.")
                     return
@@ -148,6 +157,10 @@ struct AddServerSheet: View {
                                               metadata: result.metadata,
                                               format: result.payload.format,
                                               skipped: result.payload.skipped)
+                if requestAs != .automatic,
+                   let added = store.subscriptions.first(where: { $0.url == url }) {
+                    store.mutateSubscription(id: added.id) { $0.requestAs = requestAs }
+                }
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

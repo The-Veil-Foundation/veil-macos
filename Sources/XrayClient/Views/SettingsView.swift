@@ -232,6 +232,14 @@ struct SettingsView: View {
                     if on { NotificationManager.requestAuthorization() }
                     store.save()
                 }
+            Picker(selection: $store.settings.balancerStrategy) {
+                ForEach(BalancerStrategy.allCases) { strategy in
+                    Text(loc(strategy.label)).tag(strategy)
+                }
+            } label: {
+                HintLabel(loc("Balancer"), loc("How a server with several nodes, such as a provider's \"Auto\" profile, picks one. Fastest is what providers set up. TUN mode always uses the fastest node. Applies on the next connect."))
+            }
+            .onChange(of: store.settings.balancerStrategy) { _, _ in store.save() }
         }
 
         Section {

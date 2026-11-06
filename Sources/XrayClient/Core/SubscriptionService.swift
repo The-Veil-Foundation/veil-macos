@@ -17,7 +17,7 @@ enum SubscriptionService {
         let sendHWID = (sub.sendHWID ?? store.settings.sendHwid)
             && sub.hwidStatus != .notSupported
         let hwid = sendHWID ? DeviceID.hwid(for: sub.id) : nil
-        let userAgent = sub.userAgentOverride ?? store.settings.userAgentOverride
+        let userAgent = sub.requestUserAgent(global: store.settings.userAgentOverride)
 
         do {
             let result = try await SubscriptionFetcher.fetch(url, hwid: hwid,

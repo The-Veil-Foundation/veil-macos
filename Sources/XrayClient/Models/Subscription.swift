@@ -46,7 +46,13 @@ struct Subscription: Codable, Identifiable, Equatable {
 
     /// Per-subscription overrides. nil means "follow the global setting".
     var sendHWID: Bool?
+    /// The User-Agent sent when `requestAs` is `.custom`. A value stored by an
+    /// older build, before `requestAs` existed, is still honoured.
     var userAgentOverride: String?
+    /// Which kind of client Veil introduces itself as when fetching this
+    /// subscription. nil is `.automatic`. Optional so that stores written by
+    /// older builds still decode.
+    var requestAs: SubscriptionRequestProfile?
 
     // Traffic accounting (bytes). nil when the panel doesn't report it.
     var uploadBytes: Int64?
@@ -101,10 +107,66 @@ struct Subscription: Codable, Identifiable, Equatable {
         if metadata.hwidStatus != .unknown { hwidStatus = metadata.hwidStatus }
     }
 
+    /// The User-Agent override to fetch this subscription with, or nil for
+    /// Veil's own. `global` is the app-wide override from Settings.
+    func requestUserAgent(global: String) -> String? {
+        switch requestAs ?? .automatic {
+        case .automatic, .custom:
+            let own = userAgentOverride?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !own.isEmpty { return own }
+            let shared = global.trimmingCharacters(in: .whitespacesAndNewlines)
+            return shared.isEmpty ? nil : shared
+        case .xrayJSON, .singbox:
+            return (requestAs ?? .automatic).presetUserAgent
+        }
+    }
+
     /// How long to wait before refreshing, honouring the panel's own request
     /// when it made one.
     func refreshInterval(defaultHours: Int) -> TimeInterval {
         TimeInterval(max(1, updateIntervalHours ?? defaultHours) * 3600)
+    }
+}
+
+/// Which client to present to a subscription panel.
+///
+/// Panels (Remnawave's Response Rules, Marzban's templates) pick what to send
+/// from the User-Agent: a client they know as an Xray one gets a full Xray
+/// config with balancers and routing, a sing-box one gets a sing-box config,
+/// and anything unknown — Veil included — gets a bare list of share links. The
+/// same subscription can look very different in Veil and in Happ for that
+/// reason alone.
+enum SubscriptionRequestProfile: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Veil's own User-Agent, or the override from Settings.
+    case automatic
+    /// Ask for a full Xray-core config.
+    case xrayJSON
+    /// Ask for a full sing-box config.
+    case singbox
+    /// A User-Agent the user typed.
+    case custom
+
+    var id: String { rawValue }
+
+    /// What to call it in the interface (an English `Loc` key).
+    var label: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .xrayJSON:  return "Xray config"
+        case .singbox:   return "sing-box config"
+        case .custom:    return "Custom User-Agent"
+        }
+    }
+
+    /// The User-Agent panels map to this format. Picked to match the default
+    /// rules panels ship with: Remnawave and Marzban both serve Xray JSON to
+    /// Happ and sing-box JSON to the official sing-box apps (`SF*`).
+    var presetUserAgent: String? {
+        switch self {
+        case .xrayJSON: return "Happ/3.0.0"
+        case .singbox:  return "SFM/1.14.0"
+        case .automatic, .custom: return nil
+        }
     }
 }
 

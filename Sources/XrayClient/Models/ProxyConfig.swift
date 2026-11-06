@@ -44,6 +44,11 @@ struct ProxyConfig: Codable, Identifiable, Equatable {
 
     // Display
     var name: String
+    /// A line the panel wrote about this server (Remnawave's per-host "Server
+    /// Description"), shown where the protocol name would be. Comes from a
+    /// share link's `#Name?serverDescription=<base64>` or an Xray config's
+    /// `meta.serverDescription`.
+    var serverDescription: String?
 
     // Core connection
     var proto: ProxyProtocol

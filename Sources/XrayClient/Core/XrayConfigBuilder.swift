@@ -32,8 +32,10 @@ enum XrayConfigBuilder {
     static func build(for cfg: ProxyConfig,
                       ports: InboundPorts = InboundPorts(),
                       rules: [RoutingRule] = [],
-                      logLevel: String = "warning") -> [String: Any] {
-        build(for: cfg, inbound: .localProxy(ports), rules: rules, logLevel: logLevel)
+                      logLevel: String = "warning",
+                      balancerStrategy: BalancerStrategy = .leastPing) -> [String: Any] {
+        build(for: cfg, inbound: .localProxy(ports), rules: rules, logLevel: logLevel,
+              balancerStrategy: balancerStrategy)
     }
 
     /// - Parameters:
@@ -50,7 +52,8 @@ enum XrayConfigBuilder {
                       logLevel: String = "warning",
                       logFile: String? = nil,
                       dnsServers: [String] = [],
-                      stats: Bool = false) -> [String: Any] {
+                      stats: Bool = false,
+                      balancerStrategy: BalancerStrategy = .leastPing) -> [String: Any] {
         let isBalancer = cfg.isBalancer
         let proxyOutbounds = outbounds(for: cfg)
         let balancerTags = isBalancer ? proxyOutbounds.compactMap { $0["tag"] as? String } : []
@@ -75,8 +78,12 @@ enum XrayConfigBuilder {
             "routing": routing(rules: rules,
                                isBalancer: isBalancer,
                                balancerTags: balancerTags,
-                               hasDNS: !dnsServers.isEmpty)
+                               hasDNS: !dnsServers.isEmpty,
+                               strategy: balancerStrategy)
         ]
+        if isBalancer, balancerTags.count > 1 {
+            config.merge(observation(of: balancerTags, for: balancerStrategy)) { _, new in new }
+        }
         if !dnsServers.isEmpty {
             config["dns"] = ["servers": dnsServers, "queryStrategy": "UseIP"]
         }
@@ -95,8 +102,10 @@ enum XrayConfigBuilder {
     static func jsonData(for cfg: ProxyConfig,
                          ports: InboundPorts = InboundPorts(),
                          rules: [RoutingRule] = [],
-                         logLevel: String = "warning") throws -> Data {
-        let dict = build(for: cfg, ports: ports, rules: rules, logLevel: logLevel)
+                         logLevel: String = "warning",
+                         balancerStrategy: BalancerStrategy = .leastPing) throws -> Data {
+        let dict = build(for: cfg, ports: ports, rules: rules, logLevel: logLevel,
+                         balancerStrategy: balancerStrategy)
         return try JSONSerialization.data(withJSONObject: dict,
                                           options: [.prettyPrinted, .sortedKeys])
     }
@@ -397,6 +406,35 @@ enum XrayConfigBuilder {
         ["tag": "block", "protocol": "blackhole", "settings": [:]]
     }
 
+    /// What a measuring strategy needs to measure with: `leastPing` reads the
+    /// observatory, `leastLoad` the burst observatory. The other two need
+    /// nothing.
+    static func observation(of tags: [String],
+                            for strategy: BalancerStrategy) -> [String: Any] {
+        let probeURL = "https://www.gstatic.com/generate_204"
+        switch strategy {
+        case .leastPing:
+            return ["observatory": [
+                "subjectSelector": tags,
+                "probeURL": probeURL,
+                "probeInterval": "1m",
+                "enableConcurrency": true
+            ]]
+        case .leastLoad:
+            return ["burstObservatory": [
+                "subjectSelector": tags,
+                "pingConfig": [
+                    "destination": probeURL,
+                    "interval": "1m",
+                    "sampling": 3,
+                    "timeout": "5s"
+                ]
+            ]]
+        case .roundRobin, .random:
+            return [:]
+        }
+    }
+
     /// Answers DNS queries from the core's own `dns` section instead of letting
     /// them travel as opaque UDP. Only emitted alongside a `dns` config.
     private static func dnsOutbound() -> [String: Any] {
@@ -409,7 +447,8 @@ enum XrayConfigBuilder {
     private static func routing(rules: [RoutingRule],
                                 isBalancer: Bool,
                                 balancerTags: [String] = [],
-                                hasDNS: Bool = false) -> [String: Any] {
+                                hasDNS: Bool = false,
+                                strategy: BalancerStrategy = .leastPing) -> [String: Any] {
         var ruleList: [[String: Any]] = []
         // DNS first: in TUN mode the resolver's queries arrive as plain UDP
         // packets, and we want the core to answer them (and to fetch the answer
@@ -434,11 +473,17 @@ enum XrayConfigBuilder {
             "rules": ruleList
         ]
         if isBalancer && !balancerTags.isEmpty {
-            routing["balancers"] = [[
+            var balancer: [String: Any] = [
                 "tag": "proxy",
                 "selector": balancerTags,
-                "strategy": ["type": "random"]
-            ]]
+                "strategy": ["type": strategy.rawValue]
+            ]
+            // Until the first measurement lands a measuring strategy has no
+            // answer, and traffic would stall rather than wait.
+            if strategy == .leastPing || strategy == .leastLoad {
+                balancer["fallbackTag"] = balancerTags[0]
+            }
+            routing["balancers"] = [balancer]
         }
         return routing
     }

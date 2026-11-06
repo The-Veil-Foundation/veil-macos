@@ -368,3 +368,156 @@ final class SubscriptionStoreCompatibilityTests: XCTestCase {
         XCTAssertTrue(sub.declaredGroups.isEmpty)
     }
 }
+
+/// Panels choose the response format by User-Agent, so the client Veil
+/// presents decides whether balancers and routing arrive at all.
+final class SubscriptionRequestProfileTests: XCTestCase {
+
+    func testAutomaticKeepsVeilsOwnAgentOrTheGlobalOverride() {
+        let sub = Subscription(name: "s", url: "https://example.com/sub")
+        XCTAssertNil(sub.requestUserAgent(global: ""))
+        XCTAssertEqual(sub.requestUserAgent(global: " Custom/1 "), "Custom/1")
+    }
+
+    func testPresetsWinOverTheGlobalOverride() {
+        var sub = Subscription(name: "s", url: "https://example.com/sub")
+        sub.requestAs = .xrayJSON
+        XCTAssertEqual(sub.requestUserAgent(global: "Custom/1"), "Happ/3.0.0")
+        sub.requestAs = .singbox
+        XCTAssertEqual(sub.requestUserAgent(global: "Custom/1"), "SFM/1.14.0")
+    }
+
+    func testCustomUsesTheSubscriptionsOwnAgent() {
+        var sub = Subscription(name: "s", url: "https://example.com/sub")
+        sub.requestAs = .custom
+        sub.userAgentOverride = "Streisand/1.0"
+        XCTAssertEqual(sub.requestUserAgent(global: "Custom/1"), "Streisand/1.0")
+        sub.userAgentOverride = "  "
+        XCTAssertEqual(sub.requestUserAgent(global: "Custom/1"), "Custom/1")
+    }
+
+    func testAStoreWrittenBeforeTheFieldStillDecodes() throws {
+        let old = #"{"id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","name":"s","servers":[],"autoUpdate":true,"isCollapsed":false}"#
+        let sub = try JSONDecoder().decode(Subscription.self, from: Data(old.utf8))
+        XCTAssertNil(sub.requestAs)
+    }
+}
+
+/// Remnawave answers a client it serves Xray JSON to with a list of whole
+/// configs, one per host, each naming its server in `remarks`.
+final class XrayConfigListTests: XCTestCase {
+
+    private func config(remarks: String, address: String, tag: String = "proxy") -> String {
+        """
+        {"remarks": "\(remarks)",
+         "outbounds": [
+           {"tag": "\(tag)", "protocol": "vless",
+            "settings": {"vnext": [{"address": "\(address)", "port": 443,
+              "users": [{"id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "encryption": "none"}]}]},
+            "streamSettings": {"network": "tcp", "security": "tls"}},
+           {"tag": "direct", "protocol": "freedom"}
+         ],
+         "routing": {"rules": []}}
+        """
+    }
+
+    func testEveryConfigInTheListBecomesANamedServer() {
+        let body = "[\(config(remarks: "🇩🇪 Germany", address: "1.1.1.1")),\(config(remarks: "🇫🇮 Finland", address: "2.2.2.2"))]"
+        let payload = SubscriptionPayloadParser.parse(body)
+        XCTAssertEqual(payload.format, .xrayJSON)
+        XCTAssertEqual(payload.servers.map(\.name), ["🇩🇪 Germany", "🇫🇮 Finland"])
+        XCTAssertEqual(payload.servers.map(\.address), ["1.1.1.1", "2.2.2.2"])
+        XCTAssertTrue(payload.skipped.isEmpty, "freedom is structural: \(payload.skipped)")
+    }
+
+    func testABase64WrappedListIsReadToo() {
+        let body = "[\(config(remarks: "A", address: "1.1.1.1"))]"
+        let payload = SubscriptionPayloadParser.parse(Data(body.utf8).base64EncodedString())
+        XCTAssertEqual(payload.format, .xrayBase64)
+        XCTAssertEqual(payload.servers.map(\.name), ["A"])
+    }
+
+    func testABalancedProfileIsOneEntryOverItsNodes() {
+        let body = """
+        [{"remarks": "Auto",
+          "outbounds": [
+            {"tag": "proxy-1", "protocol": "vless",
+             "settings": {"vnext": [{"address": "1.1.1.1", "port": 443,
+               "users": [{"id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "encryption": "none"}]}]}},
+            {"tag": "proxy-2", "protocol": "vless",
+             "settings": {"vnext": [{"address": "2.2.2.2", "port": 443,
+               "users": [{"id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "encryption": "none"}]}]}}
+          ],
+          "routing": {"balancers": [{"tag": "auto", "selector": ["proxy-"]}]}}]
+        """
+        let payload = SubscriptionPayloadParser.parse(body)
+        XCTAssertEqual(payload.servers.map(\.name), ["Auto"])
+        XCTAssertEqual(payload.servers.first?.allAddresses, ["1.1.1.1", "2.2.2.2"])
+        XCTAssertTrue(payload.groups.isEmpty)
+    }
+
+    private func node(_ tag: String, _ address: String) -> String {
+        """
+        {"tag": "\(tag)", "protocol": "vless",
+         "settings": {"vnext": [{"address": "\(address)", "port": 443,
+           "users": [{"id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "encryption": "none"}]}]}}
+        """
+    }
+
+    private func profile(_ remarks: String, _ nodes: [(String, String)], meta: String = "") -> String {
+        """
+        {"remarks": "\(remarks)", \(meta)
+         "outbounds": [\(nodes.map { node($0.0, $0.1) }.joined(separator: ","))],
+         "routing": {"balancers": [
+           {"tag": "auto", "selector": ["testpath-"]},
+           {"tag": "telegram-fast", "selector": ["tg-"]}]}}
+        """
+    }
+
+    /// Happ lists one entry per profile; the internal outbound tags never show.
+    func testEachProfileIsOneEntryNamedByItsRemarks() {
+        let body = "[" + [
+            profile("Europe | Auto", [("testpath-0", "1.1.1.1"), ("testpath-1", "2.2.2.2"),
+                                      ("tg-0", "9.9.9.9")]),
+            profile("Germany", [("testpath-0", "2.2.2.2")]),
+        ].joined(separator: ",") + "]"
+        let payload = SubscriptionPayloadParser.parse(body)
+        XCTAssertEqual(payload.servers.map(\.name), ["Europe | Auto", "Germany"])
+        XCTAssertEqual(payload.servers[0].allAddresses, ["1.1.1.1", "2.2.2.2"],
+                       "only what the main balancer picks from; the Telegram one is routing's")
+        XCTAssertFalse(payload.servers[1].isBalancer)
+        XCTAssertFalse(payload.servers.contains { $0.name.contains("testpath") })
+    }
+
+    func testTheProfilesServerDescriptionReachesItsEntry() {
+        let body = "[" + profile("Germany", [("testpath-0", "1.1.1.1")],
+                                 meta: #""meta": {"serverDescription": "Fast · 10 Gbit"},"#) + "]"
+        XCTAssertEqual(SubscriptionPayloadParser.parse(body).servers.first?.serverDescription,
+                       "Fast · 10 Gbit")
+    }
+
+    func testAnEmptyListIsNotAConfig() {
+        XCTAssertEqual(SubscriptionPayloadParser.parse("[]").format, .unknown)
+    }
+}
+
+/// Remnawave's per-host "Server Description", in Happ's link convention.
+final class ServerDescriptionLinkTests: XCTestCase {
+
+    private let base = "vless://3F2504E0-4F89-11D3-9A0C-0305E82C3301@1.2.3.4:443?encryption=none&security=none&type=tcp"
+
+    func testTheDescriptionIsSplitOffTheName() throws {
+        let text = Data("Через РФ · 1 Гбит".utf8).base64EncodedString()
+        let fragment = "🇸🇪 Швеция?serverDescription=\(text)"
+            .addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed)!
+        let server = try LinkParser.parse("\(base)#\(fragment)")
+        XCTAssertEqual(server.name, "🇸🇪 Швеция")
+        XCTAssertEqual(server.serverDescription, "Через РФ · 1 Гбит")
+    }
+
+    func testANameWithoutOneIsLeftAlone() throws {
+        let server = try LinkParser.parse("\(base)#Plain%20name")
+        XCTAssertEqual(server.name, "Plain name")
+        XCTAssertNil(server.serverDescription)
+    }
+}
