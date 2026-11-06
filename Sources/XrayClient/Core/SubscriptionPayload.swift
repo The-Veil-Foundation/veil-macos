@@ -91,6 +91,9 @@ enum SubscriptionPayloadParser {
         if let json = jsonObject(from: trimmed) {
             return fromJSON(json, raw: body, text: trimmed, wasBase64: false)
         }
+        if let configs = jsonArray(from: trimmed) {
+            return fromJSONList(configs, raw: body, text: trimmed, wasBase64: false)
+        }
 
         // A base64 wrapper can hide either a link list or a whole config.
         if let data = LinkParser.decodeBase64(trimmed),
@@ -98,6 +101,9 @@ enum SubscriptionPayloadParser {
             let inner = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
             if let json = jsonObject(from: inner) {
                 return fromJSON(json, raw: body, text: inner, wasBase64: true)
+            }
+            if let configs = jsonArray(from: inner) {
+                return fromJSONList(configs, raw: body, text: inner, wasBase64: true)
             }
             if inner.contains("://") {
                 let read = readLinks(inner)
@@ -216,6 +222,77 @@ enum SubscriptionPayloadParser {
     private static func jsonObject(from text: String) -> [String: Any]? {
         guard text.hasPrefix("{"), let data = text.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// A JSON array of whole configs, or nil. An empty array is nil too: it
+    /// says nothing about the format.
+    private static func jsonArray(from text: String) -> [[String: Any]]? {
+        guard text.hasPrefix("["), let data = text.data(using: .utf8),
+              let list = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
+              !list.isEmpty else { return nil }
+        return list
+    }
+
+    /// A list of whole configs, as Remnawave answers a client it serves Xray
+    /// JSON to: one element per host the panel offers.
+    ///
+    /// An element is a profile, not a server. "Europe | Auto" is a complete
+    /// config with a dozen outbounds and a `leastPing` balancer over them, and
+    /// its outbound tags are internal (`testpath-3`, `rescue-path-1`). Happ
+    /// lists each profile as one entry named by its `remarks`, and so does
+    /// Veil: the nodes the profile's balancer picks from become one server
+    /// with `alternates`, which the config builders turn back into a balancer.
+    /// Outbounds only the profile's own routing rules reach — a Telegram-only
+    /// balancer, rescue chains — have no meaning outside that routing and are
+    /// left out.
+    private static func fromJSONList(_ configs: [[String: Any]], raw: String,
+                                     text: String, wasBase64: Bool) -> SubscriptionPayload {
+        var format: SubscriptionPayload.Format?
+        var servers: [ProxyConfig] = []
+        var skipped: [String: Int] = [:]
+
+        for (position, config) in configs.enumerated() {
+            let part = fromJSON(config, raw: raw, text: text, wasBase64: wasBase64)
+            format = format ?? part.format
+            for note in part.skipped { skipped[note.label, default: 0] += note.count }
+            guard !part.servers.isEmpty else { continue }
+
+            let remarks = nonEmpty((config["remarks"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines))
+            let description = nonEmpty(((config["meta"] as? [String: Any])?["serverDescription"]
+                as? String)?.trimmingCharacters(in: .whitespacesAndNewlines))
+
+            // The balancer the profile's traffic goes to: the one tagged
+            // `auto` if there is one, else the first. No balancer means Xray
+            // dials the first outbound.
+            let main = part.groups.first { $0.name == "auto" } ?? part.groups.first
+            var members = part.servers
+            if let main {
+                let ids = Set(main.memberIDs)
+                let picked = part.servers.filter { ids.contains($0.id) }
+                if !picked.isEmpty { members = picked }
+            } else {
+                members = [part.servers[0]]
+            }
+
+            var entry = members[0]
+            entry.name = remarks ?? (part.servers.count == 1 ? entry.name : "Profile \(position + 1)")
+            if entry.serverDescription == nil { entry.serverDescription = description }
+            let rest = members.dropFirst().map { node -> ProxyConfig in
+                var node = node
+                node.alternates = nil
+                return node
+            }
+            entry.alternates = rest.isEmpty ? nil : Array(rest)
+            servers.append(entry)
+        }
+
+        return SubscriptionPayload(raw: raw,
+                                   format: format ?? (wasBase64 ? .xrayBase64 : .xrayJSON),
+                                   servers: servers,
+                                   configJSON: text,
+                                   groups: [],
+                                   skipped: notes(skipped))
     }
 
     /// A Clash/Mihomo profile is YAML with a `proxies:` block plus groups or

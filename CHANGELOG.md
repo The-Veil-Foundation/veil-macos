@@ -5,6 +5,32 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- **Request as** for each subscription (Sources page, and the Add sheet).
+  Panels decide what to send by the client asking: Veil introduced itself as
+  `Veil/…`, which no panel's rules know, so it got a bare list of share links
+  while Happ got the same subscription as a full Xray config with balancers.
+  Pick *Xray config* or *sing-box config* to get the servers and balancer
+  groups those clients get, or type a custom User-Agent. Changing it refetches
+  at once, and diagnostics show the choice.
+- The panel's per-host **Server Description** is shown in the server list in
+  place of the protocol name, as Happ shows it. It is read from a share link's
+  `#Name?serverDescription=<base64>` — which used to end up in the name — and
+  from an Xray config's `meta.serverDescription`.
+- **Balancer** setting (Settings → Connection): how a server with several
+  nodes picks one when Xray runs it — Fastest (the default), Most stable,
+  Round robin or Random. Xray used to pick a random node for every
+  connection, where providers set their profiles up to use the fastest.
+
+### Fixed
+
+- A subscription that answers with a list of Xray configs — Remnawave's
+  answer to clients it serves Xray JSON — is read instead of reported as
+  unrecognised. Each config is listed as one entry named by its `remarks`,
+  as Happ lists it — "Europe | Auto", not the panel's internal outbound tags —
+  and balances over the nodes its own balancer picks from.
+
 ## [1.13.0] — 2026-11-05
 
 ### Added

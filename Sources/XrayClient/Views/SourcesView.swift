@@ -14,6 +14,8 @@ struct SourcesView: View {
 
     @State private var selectedSourceID: UUID?
     @State private var selectedServer: ProxyConfig?
+    /// Custom User-Agents being typed, by subscription, until Return.
+    @State private var agentDraft: [UUID: String] = [:]
 
     private var sources: [Subscription] { store.orderedSubscriptions }
 
@@ -140,6 +142,8 @@ struct SourcesView: View {
             }
             .font(.callout)
 
+            if !source.isManual { requestAsControls(source) }
+
             if let skipped = source.lastSkipped, !skipped.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Label(loc("Not everything in this source could be used"),
@@ -163,6 +167,52 @@ struct SourcesView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// Which client Veil presents itself as to this panel. Changing it
+    /// refetches at once, so the user sees the format change in the row above.
+    private func requestAsControls(_ source: Subscription) -> some View {
+        let id = source.id
+        let profile = Binding<SubscriptionRequestProfile>(
+            get: { store.subscriptions.first { $0.id == id }?.requestAs ?? .automatic },
+            set: { value in
+                store.mutateSubscription(id: id) { $0.requestAs = value == .automatic ? nil : value }
+                if value != .custom { refetch(id) }
+            })
+        // Written on submit only: saving the store on every keystroke rewrites
+        // the file and the Keychain entry for nothing.
+        let customAgent = Binding<String>(
+            get: { agentDraft[id] ?? store.subscriptions.first { $0.id == id }?.userAgentOverride ?? "" },
+            set: { agentDraft[id] = $0 })
+        return VStack(alignment: .leading, spacing: 4) {
+            Picker(loc("Request as"), selection: profile) {
+                ForEach(SubscriptionRequestProfile.allCases) { option in
+                    Text(loc(option.label)).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            if profile.wrappedValue == .custom {
+                TextField(loc("User-Agent"), text: customAgent)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 320)
+                    .onSubmit {
+                        if let draft = agentDraft.removeValue(forKey: id) {
+                            let value = draft.trimmingCharacters(in: .whitespaces)
+                            store.mutateSubscription(id: id) { $0.userAgentOverride = value.isEmpty ? nil : value }
+                        }
+                        refetch(id)
+                    }
+            }
+            Text(loc("Panels choose what to send by the client asking. Pick Xray config to get the servers and balancer groups Happ gets, or sing-box config for what sing-box apps get."))
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func refetch(_ id: UUID) {
+        guard let current = store.subscriptions.first(where: { $0.id == id }) else { return }
+        Task { await SubscriptionService.refresh(current, into: store) }
     }
 
     private func row(_ label: String, _ value: String) -> some View {
