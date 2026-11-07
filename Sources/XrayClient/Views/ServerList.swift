@@ -49,7 +49,9 @@ struct ListSectionView: View {
     private var isCollapsed: Bool { section.isCollapsed }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // A single subscription can hold hundreds of rows. The outer stack
+        // defers sections, so each section must defer its own rows as well.
+        LazyVStack(alignment: .leading, spacing: 0) {
             if let subscription {
                 SubscriptionHeader(subscription: subscription, count: section.servers.count)
             } else {

@@ -120,10 +120,8 @@ final class PingTester {
     }
 
     private func applyResults(_ batch: [UUID: Int?]) {
-        for (id, ms) in batch {
-            results[id] = .some(ms)
-            testing.remove(id)
-        }
+        results.merge(batch) { _, latest in latest }
+        testing.subtract(batch.keys)
     }
 
     func latency(for id: UUID) -> Int?? {
