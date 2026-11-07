@@ -355,7 +355,10 @@ final class ConnectionManager {
         input.activeServerID = server.id
         input.ports = ports
         input.includeTun = (mode == .tun)
-        if input.includeTun { input.systemResolvers = PhysicalInterface.systemResolvers() }
+        if input.includeTun {
+            input.systemResolvers = PhysicalInterface.systemResolvers()
+            input.systemGateways = PhysicalInterface.systemGateways()
+        }
         input.subscriptionGroups = subscriptionGroups
         input.clashSecret = controlSecret
         // In TUN mode the helper picks the cache path itself — it will not open
