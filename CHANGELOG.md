@@ -9,6 +9,7 @@ All notable changes to Veil are recorded here. Versions follow
 
 ### Fixed
 
+- Keep the log pane steady while resizing.
 - TUN keeps working when a custom rule sends a LAN address through the proxy
   (for example a NAS at `192.168.10.25`). Opening the LAN range for that rule
   also pulled the router into the tunnel, and every connection failed with

@@ -84,8 +84,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        @Bindable var store = store
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             // Its own view, so a change of connection state redraws the header
             // and not the server list beneath it.
             ConnectionHeader()
@@ -102,9 +101,7 @@ struct ContentView: View {
             if showLog {
                 // Reads the log itself: read here, every line the core printed
                 // would re-run this whole body — filters, chips and list.
-                ConnectionLogPane(height: $store.settings.logPaneHeight,
-                                  onHeightCommit: { store.save() })
-                    .frame(height: store.settings.logPaneHeight)
+                ConnectionLogPane()
             }
             Divider()
             footer
@@ -694,14 +691,16 @@ private struct ConnectionHeader: View {
 /// doing while someone is reading it.
 private struct ConnectionLogPane: View {
     @Environment(ConnectionManager.self) private var connection
-    @Binding var height: Double
-    var onHeightCommit: (() -> Void)? = nil
+    @Environment(ServerStore.self) private var store
 
     var body: some View {
         LogPane(text: connection.logs,
-                height: $height,
+                height: store.settings.logPaneHeight,
                 onClear: { connection.clearLogs() },
-                onHeightCommit: onHeightCommit)
+                onHeightCommit: { height in
+                    store.settings.logPaneHeight = height
+                    store.save()
+                })
             .onAppear { connection.setLogVisible(true) }
             .onDisappear { connection.setLogVisible(false) }
     }
@@ -806,21 +805,59 @@ struct ServerRow: View {
 struct LogPane: View {
     @Environment(Loc.self) private var loc
     let text: String
-    /// The pane's height, dragged by the grabber along its top edge and kept
-    /// in the settings, because a diagnostics pane that forgets how tall it
-    /// was has to be resized on every launch.
-    @Binding var height: Double
+    let height: Double
     var onClear: (() -> Void)? = nil
-    /// Called when a drag ends, so the new height reaches disk once rather
-    /// than on every frame of the drag.
-    var onHeightCommit: (() -> Void)? = nil
+    var onHeightCommit: ((Double) -> Void)? = nil
+    @GestureState private var dragOffset: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            grabber
+            LogPaneContent(text: text, onClear: onClear)
+        }
+        .logPaneBackground()
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(height: AppSettings.clampedLogHeight(height - Double(dragOffset)))
+    }
+
+    private var grabber: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(dragOffset == 0 ? 0.3 : 0.6))
+            .frame(width: 38, height: 4)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .gesture(
+                // The grabber moves with the pane, so its own coordinates
+                // cannot measure how far the pointer has moved.
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .updating($dragOffset) { value, offset, _ in
+                        offset = value.translation.height
+                    }
+                    .onEnded { value in
+                        onHeightCommit?(AppSettings.clampedLogHeight(height - Double(value.translation.height)))
+                    }
+            )
+            .onHover { inside in
+                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+            }
+            .help(loc("Drag to resize"))
+    }
+}
+
+private struct LogPaneContent: View {
+    @Environment(Loc.self) private var loc
+    let text: String
+    var onClear: (() -> Void)?
 
     /// What is typed in the search box, and the severity floor.
     @State private var query = ""
     @State private var minimum: LogLevel = .none
-    /// The height the current drag started from.
-    @State private var dragStart: Double?
-
     private var shown: String {
         LogFilter.apply(text, query: query, minimum: minimum)
     }
@@ -839,7 +876,6 @@ struct LogPane: View {
     var body: some View {
         let body = shown
         return VStack(spacing: 0) {
-            grabber
             // Header toolbar.
             HStack(spacing: 8) {
                 Image(systemName: "terminal")
@@ -904,40 +940,6 @@ struct LogPane: View {
                         : body,
                         isPlaceholder: body.isEmpty)
         }
-        .logPaneBackground()
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-        .padding(.horizontal, 12).padding(.vertical, 8)
-    }
-
-    /// The top edge, dragged to make the pane taller or shorter.
-    private var grabber: some View {
-        Capsule()
-            .fill(Color.secondary.opacity(dragStart == nil ? 0.3 : 0.6))
-            .frame(width: 38, height: 4)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let base = dragStart ?? height
-                        if dragStart == nil { dragStart = base }
-                        // Upwards is a negative translation and a taller pane.
-                        height = AppSettings.clampedLogHeight(base - value.translation.height)
-                    }
-                    .onEnded { _ in
-                        dragStart = nil
-                        onHeightCommit?()
-                    }
-            )
-            .onHover { inside in
-                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-            }
-            .help(loc("Drag to resize"))
     }
 }
 
