@@ -608,7 +608,7 @@ final class ConnectionManager {
     /// one at a time and in the order it was asked for. They are subprocesses
     /// and XPC calls that can take seconds; run from unordered detached tasks,
     /// a quick disconnect-then-connect could land the "off" after the "on".
-    nonisolated static let transportQueue = DispatchQueue(label: "dev.local.veil.transport",
+    nonisolated static let transportQueue = DispatchQueue(label: "org.veil.app.transport",
                                                           qos: .userInitiated)
 
     nonisolated static func onTransport<T: Sendable>(

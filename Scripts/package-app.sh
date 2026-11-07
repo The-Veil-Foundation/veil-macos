@@ -108,7 +108,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
-  <key>CFBundleIdentifier</key><string>dev.local.veil</string>
+  <key>CFBundleIdentifier</key><string>org.veil.app</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key><string>APPL</string>

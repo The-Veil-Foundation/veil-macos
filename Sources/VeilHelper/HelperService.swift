@@ -11,7 +11,7 @@ import os
 /// needed.
 final class HelperService: NSObject, VeilHelperProtocol, @unchecked Sendable {
 
-    private let log = Logger(subsystem: "dev.local.veil.helper", category: "tunnel")
+    private let log = Logger(subsystem: "org.veil.app.helper", category: "tunnel")
     private let lock = NSLock()
 
     private let device = "utun123"

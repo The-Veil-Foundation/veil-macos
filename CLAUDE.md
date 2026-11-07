@@ -25,7 +25,7 @@ Scripts/run-app.sh release   # assemble Veil.app and launch it
 ```
 
 **`swift run` gives no window.** The SPM product is still named `XrayClient`, but it is
-packaged as `Veil.app` (executable renamed to `Veil`, bundle id `dev.local.veil`). Only
+packaged as `Veil.app` (executable renamed to `Veil`, bundle id `org.veil.app`). Only
 `run-app.sh` builds a bundle macOS will show. The app is called **Veil** everywhere
 user-facing.
 
@@ -46,7 +46,7 @@ Both expose SOCKS + HTTP inbounds on `127.0.0.1`. Two tunnel modes consume them:
 
 - **System Proxy** — `networksetup` points the active service at those ports. No admin rights.
   Only proxy-aware apps route; Telegram, the terminal and UDP do not.
-- **TUN** — `tun2socks` driven by a **root launchd daemon** (`dev.local.veil.helper`).
+- **TUN** — `tun2socks` driven by a **root launchd daemon** (`org.veil.app.helper`).
 
 ### Layout
 
@@ -80,7 +80,7 @@ Helper logs are root-owned and never reach the app UI:
 
 ```bash
 sudo tail /Library/Application\ Support/Veil/helper/tun2socks.log
-log show --predicate 'subsystem == "dev.local.veil.helper"' --last 10m
+log show --predicate 'subsystem == "org.veil.app.helper"' --last 10m
 ```
 
 ### The TUN stack must be `gvisor`
