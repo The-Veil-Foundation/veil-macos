@@ -379,6 +379,29 @@ final class SingBoxProfileTests: XCTestCase {
         try assertCoreAccepts(profile, binary: binary)
     }
 
+    func testCustomLANRuleKeepsTheIPv4GatewayExcluded() throws {
+        var input = ProfileAssembler.Input()
+        let node = reality("DE")
+        input.servers = [node]
+        input.activeServerID = node.id
+        input.includeTun = true
+        input.settings.routingPreset = .bypassLAN
+        input.settings.customRules = [
+            RoutingRule(name: "NAS through proxy", target: .proxy, ips: ["192.168.10.25/32"])
+        ]
+        input.systemGateways = ["192.168.10.1"]
+        input.systemResolvers = ["192.168.10.1"]
+
+        let profile = ProfileAssembler.profile(input)
+        let excludes = try XCTUnwrap(profile.tun).routeExcludeAddress
+        XCTAssertTrue(excludes.contains("192.168.10.1/32"))
+        let nas = try XCTUnwrap(IPRange("192.168.10.25"))
+        XCTAssertFalse(excludes.compactMap(IPRange.init).contains { $0.contains(nas) })
+        if let binary = Self.singBoxBinary {
+            try assertCoreAccepts(profile, binary: binary)
+        }
+    }
+
     func testFakeIPProfilePassesSingBoxCheck() throws {
         guard let binary = Self.singBoxBinary else {
             throw XCTSkip("sing-box binary not present — run Scripts/fetch-singbox.sh")

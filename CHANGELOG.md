@@ -5,6 +5,10 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep the IPv4 default gateway outside TUN when a custom rule routes another address in its LAN through the tunnel.
+
 ## [1.14.1] — 2026-11-07
 
 ### Fixed
