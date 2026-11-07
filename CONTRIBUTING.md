@@ -36,6 +36,14 @@ Tests:
 swift test
 ```
 
+For changes to opening the main window, run the following smoke test from a
+logged-in macOS desktop. It opens a temporary app that uses Veil's main window
+scene and checks that repeated opens, minimization and closing work.
+
+```bash
+Scripts/test-main-window.sh
+```
+
 ### Bumping a core
 
 Pin the new version in `Scripts/cores.lock`, then record its hashes:
