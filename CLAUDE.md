@@ -173,12 +173,16 @@ issue.
 ```bash
 Scripts/set-version.sh X.Y.Z    # writes VERSION and the project version
 # add a ## [X.Y.Z] section to CHANGELOG.md — release.yml FAILS without it
-git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z
+# merge that into main, then:
+Scripts/release.sh X.Y.Z        # or Actions → Release → Run workflow
 ```
 
-`release.yml` checks the tag against `VERSION`, extracts that CHANGELOG section into the
-release body, and attaches `Veil.app.zip`. `ci.yml` runs build + test on every push and PR to
-`main`.
+Both workflows run **only when started by hand**; nothing runs on push, PR or tag.
+`release.yml` checks the version against `VERSION` on main, refuses a version that is already
+tagged, extracts that CHANGELOG section into the release body, creates the `vX.Y.Z` tag on
+main's head and attaches `Veil.app.zip` and `Veil-x86_64.app.zip`. `--draft` and
+`--prerelease` pass through. `Scripts/ci.sh [branch] [debug|release]` runs build + test on a
+pushed branch and follows it.
 
 ## License
 
