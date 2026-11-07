@@ -32,6 +32,10 @@ enum ProfileAssembler {
         var cacheFilePath: String = ""
         /// The resolvers macOS is using right now. See `routedResolvers`.
         var systemResolvers: [String] = []
+        /// The default gateways macOS is using right now. A resolver that is
+        /// also the gateway is never routed into the tunnel; see
+        /// `routedResolvers`.
+        var systemGateways: [String] = []
     }
 
     /// Where the core keeps its selector choices and downloaded rule-sets when
@@ -89,7 +93,8 @@ enum ProfileAssembler {
             tun.routeExcludeAddress = openedExcludes(tun.routeExcludeAddress,
                                                      for: profile.rules)
             tun.routeExcludeAddress = routedResolvers(tun.routeExcludeAddress,
-                                                      resolvers: input.systemResolvers)
+                                                      resolvers: input.systemResolvers,
+                                                      gateways: input.systemGateways)
             profile.tun = tun
         }
         return profile
@@ -128,8 +133,17 @@ enum ProfileAssembler {
     /// is why only "some apps" broke. With the resolver's own address routed
     /// into the tunnel, its queries are hijacked like any other; the rest of
     /// the LAN still stays off it.
-    static func routedResolvers(_ excludes: [String], resolvers: [String]) -> [String] {
-        let holes = resolvers.compactMap { IPRange($0) }.filter { $0.prefix == 32 }
+    ///
+    /// A resolver that is also the default gateway is left alone. DHCP very
+    /// often hands out the router as both, and a host route sending the
+    /// gateway into the utun takes the next hop away from every connection
+    /// that leaves through the physical interface: the core's own outbound
+    /// dials then fail with "network is unreachable" and nothing connects.
+    static func routedResolvers(_ excludes: [String], resolvers: [String],
+                                gateways: [String] = []) -> [String] {
+        let kept = Set(gateways.compactMap { IPRange($0) }.filter { $0.prefix == 32 }.map(\.cidr))
+        let holes = resolvers.compactMap { IPRange($0) }
+            .filter { $0.prefix == 32 && !kept.contains($0.cidr) }
         guard !holes.isEmpty else { return excludes }
         return excludes.flatMap { entry -> [String] in
             guard let range = IPRange(entry) else { return [entry] }

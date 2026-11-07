@@ -227,4 +227,35 @@ final class ResolverRoutingTests: XCTestCase {
         XCTAssertFalse(excludes.contains("192.168.0.0/16"))
         XCTAssertFalse(excludes.compactMap(IPRange.init).contains { $0.overlaps(IPRange("192.168.1.1")!) })
     }
+
+    /// DHCP on a home Wi-Fi: the router is handed out as both the gateway and
+    /// the DNS server. Routing it into the utun took the next hop away from
+    /// every direct dial, and the core failed with "network is unreachable".
+    func testAResolverThatIsTheGatewayStaysOffTheTunnel() {
+        let excludes = ["192.168.0.0/16", "10.0.0.0/8"]
+        XCTAssertEqual(ProfileAssembler.routedResolvers(excludes,
+                                                        resolvers: ["192.168.10.1"],
+                                                        gateways: ["192.168.10.1"]),
+                       excludes)
+    }
+
+    func testOnlyTheResolverThatIsTheGatewayIsKept() {
+        let result = ProfileAssembler.routedResolvers(
+            ["192.168.0.0/16"], resolvers: ["192.168.10.1", "192.168.10.53"],
+            gateways: ["192.168.10.1", "fe80::1"])
+        let ranges = result.compactMap(IPRange.init)
+        XCTAssertTrue(ranges.contains { $0.contains(IPRange("192.168.10.1")!) },
+                      "the gateway keeps its physical route")
+        XCTAssertFalse(ranges.contains { $0.overlaps(IPRange("192.168.10.53")!) },
+                       "a separate LAN resolver is still routed into the tunnel")
+    }
+
+    func testTheTunInboundKeepsTheDHCPGatewayOnTheLAN() {
+        var input = ProfileAssembler.Input()
+        input.includeTun = true
+        input.systemResolvers = ["192.168.10.1"]
+        input.systemGateways = ["192.168.10.1"]
+        let excludes = ProfileAssembler.profile(input).tun?.routeExcludeAddress ?? []
+        XCTAssertTrue(excludes.contains("192.168.0.0/16"))
+    }
 }

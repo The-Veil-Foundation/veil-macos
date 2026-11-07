@@ -70,6 +70,18 @@ enum PhysicalInterface {
         return servers
     }
 
+    /// The default gateways macOS routes through, IPv4 and IPv6, as the
+    /// primary service reports them. Read before the tunnel installs its own
+    /// routes, which do not change these keys.
+    static func systemGateways() -> [String] {
+        guard let store = SCDynamicStoreCreate(nil, "Veil" as CFString, nil, nil) else { return [] }
+        return ["State:/Network/Global/IPv4", "State:/Network/Global/IPv6"].compactMap { key in
+            guard let value = SCDynamicStoreCopyValue(store, key as CFString) as? [String: Any],
+                  let router = value["Router"] as? String, !router.isEmpty else { return nil }
+            return router
+        }
+    }
+
     static func isTunnel(_ name: String) -> Bool {
         name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("ppp")
     }

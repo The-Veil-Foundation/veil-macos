@@ -5,6 +5,15 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- TUN no longer breaks every connection on networks where DHCP hands out the
+  router as both the gateway and the DNS server (for example `192.168.10.1`).
+  Routing the system resolver into the tunnel also sent the gateway itself
+  into the utun, so the core's direct dials failed with "network is
+  unreachable". A resolver that is also the default gateway now keeps its
+  physical route; a separate LAN resolver is still routed into the tunnel.
+
 ## [1.14.0] — 2026-11-07
 
 ### Added
