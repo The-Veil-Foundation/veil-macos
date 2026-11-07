@@ -25,6 +25,9 @@ let package = Package(
             name: "XrayClient",
             dependencies: ["VeilHelperKit"],
             path: "Sources/XrayClient",
+            // tun2socks runs inside the privileged helper, not the app, so the
+            // packaging scripts copy it next to the helper instead.
+            exclude: ["Resources/tun2socks"],
             resources: [
                 .copy("Resources/xray"),
                 .copy("Resources/sing-box")

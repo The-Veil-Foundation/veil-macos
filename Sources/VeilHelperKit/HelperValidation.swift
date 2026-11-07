@@ -184,7 +184,7 @@ public enum CoreConfigGuard {
         // helper picks it.
         var experimental = config["experimental"] as? [String: Any] ?? [:]
         if !experimental.isEmpty || config["experimental"] != nil {
-            if var api = experimental["clash_api"] as? [String: Any] {
+            if let api = experimental["clash_api"] as? [String: Any] {
                 if let controller = api["external_controller"] as? String,
                    !isLoopbackEndpoint(controller) {
                     throw GuardError.remoteController(controller)
@@ -192,7 +192,6 @@ public enum CoreConfigGuard {
                 for key in forbiddenKeys where api[key] != nil {
                     throw GuardError.forbiddenKey(key)
                 }
-                experimental["clash_api"] = api
             }
             if var cache = experimental["cache_file"] as? [String: Any] {
                 cache["path"] = cachePath
