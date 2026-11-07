@@ -9,13 +9,15 @@ All notable changes to Veil are recorded here. Versions follow
 
 ### Fixed
 
-- Keep the log pane steady while resizing.
 - TUN keeps working when a custom rule sends a LAN address through the proxy
   (for example a NAS at `192.168.10.25`). Opening the LAN range for that rule
   also pulled the router into the tunnel, and every connection failed with
   "network is unreachable" again. The IPv4 default gateway now stays on the
   physical interface while the rule's address still goes through the tunnel.
-- Load source rows as they approach the visible area for faster tab switching.
+- The log pane follows the pointer steadily while you drag it taller or
+  shorter, instead of jumping, and remembers its height once you let go.
+- The Sources tab opens quickly on large subscriptions: server rows are built
+  as they scroll into view instead of all at once.
 
 ## [1.14.1] — 2026-11-07
 
