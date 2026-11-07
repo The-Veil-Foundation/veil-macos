@@ -5,6 +5,10 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- Render server rows as they approach the visible area and batch latency updates to keep large subscriptions responsive.
+
 ## [1.14.0] — 2026-11-07
 
 ### Added
