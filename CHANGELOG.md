@@ -7,6 +7,7 @@ All notable changes to Veil are recorded here. Versions follow
 
 ### Fixed
 
+- Render server rows as they approach the visible area and batch latency updates to keep large subscriptions responsive.
 - Bring the existing main window forward when opening Veil from the menu bar.
 
 ## [1.14.0] — 2026-11-07
