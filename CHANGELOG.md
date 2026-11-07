@@ -5,10 +5,10 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [1.14.1] — 2026-11-07
+
 ### Fixed
 
-- Bring the existing main window forward when opening Veil from the menu bar.
-- Render server rows as they approach the visible area and batch latency updates to keep large subscriptions responsive.
 - TUN no longer breaks every connection on networks where DHCP hands out the
   router as both the gateway and the DNS server (for example `192.168.10.1`).
   Routing the system resolver into the tunnel also sent the gateway itself
@@ -16,6 +16,7 @@ All notable changes to Veil are recorded here. Versions follow
   unreachable". A resolver that is also the default gateway now keeps its
   physical route; a separate LAN resolver is still routed into the tunnel.
 - Bring the existing main window forward when opening Veil from the menu bar.
+- Render server rows as they approach the visible area and batch latency updates to keep large subscriptions responsive.
 
 ## [1.14.0] — 2026-11-07
 
