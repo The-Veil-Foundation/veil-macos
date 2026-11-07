@@ -5,9 +5,15 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [1.14.2] — 2026-11-07
+
 ### Fixed
 
-- Keep the IPv4 default gateway outside TUN when a custom rule routes another address in its LAN through the tunnel.
+- TUN keeps working when a custom rule sends a LAN address through the proxy
+  (for example a NAS at `192.168.10.25`). Opening the LAN range for that rule
+  also pulled the router into the tunnel, and every connection failed with
+  "network is unreachable" again. The IPv4 default gateway now stays on the
+  physical interface while the rule's address still goes through the tunnel.
 
 ## [1.14.1] — 2026-11-07
 
