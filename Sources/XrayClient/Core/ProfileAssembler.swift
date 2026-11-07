@@ -91,7 +91,8 @@ enum ProfileAssembler {
                 tun.address = tun.address.filter { !$0.contains(":") }
             }
             tun.routeExcludeAddress = openedExcludes(tun.routeExcludeAddress,
-                                                     for: profile.rules)
+                                                     for: profile.rules,
+                                                     keeping: input.systemGateways)
             tun.routeExcludeAddress = routedResolvers(tun.routeExcludeAddress,
                                                       resolvers: input.systemResolvers,
                                                       gateways: input.systemGateways)
@@ -109,17 +110,27 @@ enum ProfileAssembler {
     /// whole covering block is what makes the rule work: the traffic enters
     /// the tunnel, the rule picks it up, and the preset's LAN bypass still
     /// sends the rest of that block straight back out.
-    static func openedExcludes(_ excludes: [String],
-                               for rules: [RoutingRule]) -> [String] {
+    private static func openedExcludes(_ excludes: [String], for rules: [RoutingRule],
+                                       keeping gateways: [String]) -> [String] {
         let claimed = rules
             .filter { $0.enabled && $0.target != .direct && $0.target != .block }
             .flatMap(\.destinationCIDRs)
             .compactMap(IPRange.init)
         guard !claimed.isEmpty else { return excludes }
-        return excludes.filter { entry in
+        let retained = excludes.filter { entry in
             guard let range = IPRange(entry) else { return true }
             return !claimed.contains { range.overlaps($0) }
         }
+        let originalRanges = excludes.compactMap(IPRange.init)
+        let retainedRanges = retained.compactMap(IPRange.init)
+        // Opening a LAN block for a rule must leave the physical next hop
+        // reachable, even when it sits in the same block as the rule target.
+        let gatewayExclusions = gateways.compactMap(IPRange.init).filter { gateway in
+            gateway.prefix == 32
+                && originalRanges.contains { $0.contains(gateway) }
+                && !retainedRanges.contains { $0.contains(gateway) }
+        }
+        return retained + gatewayExclusions.map(\.cidr)
     }
 
     /// Cuts the system's own resolvers out of the excluded ranges.
