@@ -27,7 +27,7 @@ enum ProxyProbe {
         var interface: String?
     }
 
-    /// Measures every server and reports each result as it arrives.
+    /// Measures every server and reports results in batches.
     static func measure(_ servers: [ProxyConfig],
                         request: Request,
                         concurrency: Int = 16,
@@ -82,10 +82,21 @@ enum ProxyProbe {
                 group.addTask { (id, await timeRequest(through: port, request)) }
             }
             for _ in 0..<concurrency { addNext(&group) }
+
+            let clock = ContinuousClock()
+            var lastReport = clock.now.advanced(by: .milliseconds(-150))
+            var pending: [UUID: Int?] = [:]
             while let (id, ms) = await group.next() {
-                await report([id: ms])
                 addNext(&group)
+                pending[id] = .some(ms)
+                let now = clock.now
+                if now - lastReport >= .milliseconds(150) {
+                    await report(pending)
+                    pending.removeAll(keepingCapacity: true)
+                    lastReport = now
+                }
             }
+            if !pending.isEmpty { await report(pending) }
         }
     }
 
