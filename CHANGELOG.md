@@ -15,6 +15,7 @@ All notable changes to Veil are recorded here. Versions follow
   also pulled the router into the tunnel, and every connection failed with
   "network is unreachable" again. The IPv4 default gateway now stays on the
   physical interface while the rule's address still goes through the tunnel.
+- Load source rows as they approach the visible area for faster tab switching.
 
 ## [1.14.1] — 2026-11-07
 

@@ -84,7 +84,7 @@ struct SourcesView: View {
     private var detail: some View {
         if let source = selectedSource {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     sourceSummary(source)
                     Divider()
                     nodeList(source)
@@ -223,34 +223,40 @@ struct SourcesView: View {
     }
 
     private func nodeList(_ source: Subscription) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        LazyVStack(alignment: .leading, spacing: 6) {
             Text(loc("Servers")).font(.headline)
             if source.servers.isEmpty {
                 Text(loc("This source has no servers in it."))
                     .font(.callout).foregroundStyle(.secondary)
             }
             ForEach(source.servers) { server in
-                HStack(spacing: 8) {
-                    Text(server.proto.rawValue.uppercased())
-                        .font(.caption2).monospaced()
-                        .frame(width: 66, alignment: .leading)
-                        .foregroundStyle(.secondary)
-                    Text(store.annotation(for: server.id).nameOverride ?? server.name)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(verbatim: "\(server.address):\(server.port)")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    Button(source.isManual ? loc("Edit") : loc("Inspect")) {
-                        selectedServer = server
-                    }
-                    .buttonStyle(.link)
+                VStack(spacing: 6) {
+                    nodeRow(server, isManual: source.isManual)
+                    Divider()
                 }
-                .padding(.vertical, 3)
-                .contentShape(Rectangle())
-                .onTapGesture { selectedServer = server }
-                Divider()
             }
         }
+    }
+
+    private func nodeRow(_ server: ProxyConfig, isManual: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(server.proto.rawValue.uppercased())
+                .font(.caption2).monospaced()
+                .frame(width: 66, alignment: .leading)
+                .foregroundStyle(.secondary)
+            Text(store.annotation(for: server.id).nameOverride ?? server.name)
+                .lineLimit(1)
+            Spacer()
+            Text(verbatim: "\(server.address):\(server.port)")
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Button(isManual ? loc("Edit") : loc("Inspect")) {
+                selectedServer = server
+            }
+            .buttonStyle(.link)
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedServer = server }
     }
 
     /// A group that follows this source: every node it has and every node it
