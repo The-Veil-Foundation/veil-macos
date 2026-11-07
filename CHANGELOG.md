@@ -5,6 +5,10 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- Bring the existing main window forward when opening Veil from the menu bar.
+
 ## [1.14.0] — 2026-11-07
 
 ### Added
