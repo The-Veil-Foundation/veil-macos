@@ -7,6 +7,7 @@ All notable changes to Veil are recorded here. Versions follow
 
 ### Fixed
 
+- Bring the existing main window forward when opening Veil from the menu bar.
 - Render server rows as they approach the visible area and batch latency updates to keep large subscriptions responsive.
 - TUN no longer breaks every connection on networks where DHCP hands out the
   router as both the gateway and the DNS server (for example `192.168.10.1`).
