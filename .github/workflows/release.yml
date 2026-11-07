@@ -1,9 +1,23 @@
 name: Release
 
+# Runs only when started by hand: Actions → Release → Run workflow, or
+# `Scripts/release.sh X.Y.Z` from a terminal. The run creates the vX.Y.Z tag
+# on the commit it was started from, so there is nothing to tag beforehand.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 1.14.2 (must match VERSION)"
+        type: string
+        required: true
+      draft:
+        description: "Publish as a draft"
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark as a pre-release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,6 +31,7 @@ jobs:
     runs-on: macos-26
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,20 +48,32 @@ jobs:
           swift --version
           xcrun --show-sdk-version
 
-      - name: Derive version from tag
+      - name: Check the version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          # The VERSION file is what the app bakes into its bundle, so a tag
+          version="${INPUT_VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must look like 1.2.3 (got '$INPUT_VERSION')."
+            exit 1
+          fi
+          # The VERSION file is what the app bakes into its bundle, so a release
           # that disagrees with it would ship a build labelled with the wrong
           # version. Fail early instead: run Scripts/set-version.sh and commit.
           file_version="$(cat VERSION)"
           if [ "$version" != "$file_version" ]; then
-            echo "::error::tag v$version does not match VERSION ($file_version)."
-            echo "::error::Run Scripts/set-version.sh $version, commit, then re-tag."
+            echo "::error::version $version does not match VERSION ($file_version) on $GITHUB_REF_NAME."
+            echo "::error::Run Scripts/set-version.sh $version, merge it, then run the release again."
+            exit 1
+          fi
+          # Never move or add to a release that already went out.
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::tag v$version already exists."
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Fetch core binaries
         run: |
@@ -81,6 +108,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
           name: Veil ${{ steps.version.outputs.version }}
           body_path: release-notes.md
           generate_release_notes: true
@@ -114,5 +145,7 @@ jobs:
       - name: Publish Intel build
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.release.outputs.tag }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
           files: dist/Veil-x86_64.app.zip

@@ -181,13 +181,14 @@ Maintainers only:
 
 ```bash
 Scripts/set-version.sh X.Y.Z          # writes VERSION and the project version
-# add a ## [X.Y.Z] section to CHANGELOG.md
-git commit && git push
-git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z
+# add a ## [X.Y.Z] section to CHANGELOG.md, open a PR, merge it into main
+Scripts/release.sh X.Y.Z              # or Actions → Release → Run workflow
 ```
 
-`release.yml` checks that the tag matches `VERSION`, extracts that CHANGELOG section into the
-release body — **a tag with no section fails the build** — and attaches `Veil.app.zip`.
+CI and releases run only when started by hand. `release.yml` checks that the version matches
+`VERSION` on main, extracts that CHANGELOG section into the release body — **a version with no
+section fails the build** — creates the `vX.Y.Z` tag and attaches both archives.
+`Scripts/ci.sh [branch] [debug|release]` runs build + test on a pushed branch.
 
 ## Reporting Bugs
 
