@@ -34,7 +34,10 @@ if [ "${REMOTE_VERSION}" != "${VERSION}" ]; then
   echo "main has VERSION ${REMOTE_VERSION}, not ${VERSION}. Run Scripts/set-version.sh ${VERSION} and merge it first." >&2
   exit 1
 fi
-if ! git show origin/main:CHANGELOG.md | grep -q "^## \[${VERSION}\]"; then
+# Read the file first: `git show | grep -q` makes git die of SIGPIPE when grep
+# stops at the first match, and pipefail then reports a missing section.
+CHANGELOG="$(git show origin/main:CHANGELOG.md)"
+if ! grep -q "^## \[${VERSION}\]" <<< "${CHANGELOG}"; then
   echo "CHANGELOG.md on main has no '## [${VERSION}]' section." >&2
   exit 1
 fi
