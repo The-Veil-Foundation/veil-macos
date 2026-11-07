@@ -14,7 +14,7 @@ struct XrayClientApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        Window("Veil", id: WindowID.main) {
+        VeilMainWindow {
             ContentView()
                 .veilEnvironment(store: store, connection: connection,
                                  pinger: pinger, loc: loc, control: control,
