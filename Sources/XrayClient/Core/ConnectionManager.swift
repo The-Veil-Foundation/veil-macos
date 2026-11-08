@@ -357,6 +357,7 @@ final class ConnectionManager {
         input.includeTun = (mode == .tun)
         if input.includeTun {
             input.systemResolvers = PhysicalInterface.systemResolvers()
+            input.physicalResolvers = PhysicalInterface.physicalResolvers()
             input.systemGateways = PhysicalInterface.systemGateways()
         }
         input.subscriptionGroups = subscriptionGroups

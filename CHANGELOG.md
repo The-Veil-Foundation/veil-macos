@@ -5,6 +5,10 @@ All notable changes to Veil are recorded here. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevent local DNS queries in native TUN from looping back into the tunnel's own DNS listener.
+
 ## [1.14.2] — 2026-11-07
 
 ### Fixed

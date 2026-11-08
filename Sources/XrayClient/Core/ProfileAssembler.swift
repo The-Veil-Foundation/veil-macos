@@ -1,6 +1,7 @@
 // macOS-only.
 #if os(macOS)
 import Foundation
+import Network
 
 /// Turns what the app knows — the server list, the settings, the current
 /// selection — into the `SingBoxProfile` the core actually runs.
@@ -32,6 +33,7 @@ enum ProfileAssembler {
         var cacheFilePath: String = ""
         /// The resolvers macOS is using right now. See `routedResolvers`.
         var systemResolvers: [String] = []
+        var physicalResolvers: [String] = []
         /// The default gateways macOS is using right now. A resolver that is
         /// also the gateway is never routed into the tunnel; see
         /// `routedResolvers`.
@@ -97,6 +99,25 @@ enum ProfileAssembler {
                                                       resolvers: input.systemResolvers,
                                                       gateways: input.systemGateways)
             profile.tun = tun
+            // The core sets DNS to the next address inside its own subnet.
+            // Reject that entire subnet even if it appears in service DNS.
+            profile.physicalDNS = input.physicalResolvers.first { resolver in
+                guard !resolver.contains("/") else { return false }
+                if let ipv4 = IPRange(resolver) {
+                    return ipv4.network != 0
+                        && !tun.address.compactMap(IPRange.init).contains { $0.contains(ipv4) }
+                }
+                guard let ipv6 = IPv6Address(resolver), ipv6 != .any else { return false }
+                return !tun.address.contains { cidr in
+                    let parts = cidr.split(separator: "/")
+                    guard parts.count == 2, let network = IPv6Address(String(parts[0])),
+                          let prefix = Int(parts[1]) else { return false }
+                    return zip(network.rawValue, ipv6.rawValue).enumerated().allSatisfy { index, pair in
+                        let bits = min(max(prefix - index * 8, 0), 8)
+                        return bits == 0 || (pair.0 >> (8 - bits)) == (pair.1 >> (8 - bits))
+                    }
+                }
+            }
         }
         return profile
     }
