@@ -145,6 +145,9 @@ final class AppControlBackend: ControlBackend {
         input.activeServerID = connection.activeServerID ?? store.selectedServerID
         input.ports = connection.ports
         input.includeTun = store.settings.mode == .tun
+        if input.includeTun {
+            input.physicalResolvers = PhysicalInterface.physicalResolvers()
+        }
         input.subscriptionGroups = store.declaredGroups
         let data = try SingBoxProfileBuilder.jsonData(ProfileAssembler.profile(input))
         return String(data: data, encoding: .utf8) ?? "{}"

@@ -60,6 +60,8 @@ struct SingBoxProfile {
     var rules: [RoutingRule] = []
     var explicitRuleSets: [RuleSetRef] = []
     var dns = DNSSettings()
+    /// Unicast DNS from the physical service, used for System DNS in TUN.
+    var physicalDNS: String?
     var ports = InboundPorts()
     /// nil renders a proxy-only config (system-proxy mode); non-nil adds the
     /// TUN inbound and with it process-aware routing.
@@ -375,9 +377,26 @@ enum SingBoxProfileBuilder {
 
     private static func dns(_ profile: SingBoxProfile) -> [String: Any] {
         let settings = profile.dns
-        var servers = settings.servers.compactMap {
-            $0.json(fakeIPv4: settings.fakeIPv4Range, fakeIPv6: settings.fakeIPv6Range)
+        let localTags = Set(settings.servers.filter { $0.kind == .local }.map(\.tag))
+        let replaceLocal = profile.tun != nil && !localTags.isEmpty
+        var mdnsTag = "veil-mdns"
+        let tags = Set(settings.servers.map(\.tag))
+        while tags.contains(mdnsTag) { mdnsTag += "-" }
+        var servers = settings.servers.compactMap { server -> [String: Any]? in
+            if replaceLocal, server.kind == .local {
+                // Asking macOS for its default DNS here can select our own
+                // TUN DNS. With no physical resolver, answer from hosts only.
+                var entry: [String: Any] = ["tag": server.tag, "type": "hosts"]
+                if let address = profile.physicalDNS {
+                    entry["type"] = "udp"
+                    entry["server"] = address
+                }
+                if !server.strategy.isEmpty { entry["strategy"] = server.strategy }
+                return entry
+            }
+            return server.json(fakeIPv4: settings.fakeIPv4Range, fakeIPv6: settings.fakeIPv6Range)
         }
+        if replaceLocal { servers.append(["type": "mdns", "tag": mdnsTag]) }
         if settings.fakeIPEnabled,
            !settings.servers.contains(where: { $0.kind == .fakeip }) {
             servers.append([
@@ -390,7 +409,19 @@ enum SingBoxProfileBuilder {
 
         var rules: [[String: Any]] = []
         for rule in settings.rules where rule.enabled && rule.hasMatcher {
-            if let rendered = dnsRule(rule) { rules.append(rendered) }
+            guard let rendered = dnsRule(rule) else { continue }
+            // Keep mDNS where the original System rule would have matched.
+            if replaceLocal, localTags.contains(rule.serverTag), !rule.reject {
+                var matcher = rendered
+                matcher.removeValue(forKey: "server")
+                rules.append(["type": "logical", "mode": "and",
+                              "rules": [matcher, ["preferred_by": [mdnsTag]]],
+                              "server": mdnsTag])
+            }
+            rules.append(rendered)
+        }
+        if replaceLocal, localTags.contains(settings.finalTag) {
+            rules.append(["preferred_by": [mdnsTag], "server": mdnsTag])
         }
 
         var dict: [String: Any] = [
