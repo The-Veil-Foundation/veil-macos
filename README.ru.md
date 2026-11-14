@@ -217,7 +217,7 @@ docs/                       agents.md (MCP-инструменты для асс�
 
 ## Лицензия
 
-Copyright (C) 2026 faustyu1.
+Copyright (C) 2026 Daniil Shashimov.
 
 Veil — свободное ПО под лицензией **GNU Affero General Public License v3.0**, см.
 [LICENSE](LICENSE). Встроенные ядра ([Xray-core](https://github.com/XTLS/Xray-core),
