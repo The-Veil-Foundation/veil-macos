@@ -213,7 +213,7 @@ code style, commit format and the PR checklist. By taking part you agree to the
 
 ## License
 
-Copyright (C) 2026 faustyu1.
+Copyright (C) 2026 Daniil Shashimov.
 
 Veil is free software, licensed under the **GNU Affero General Public License v3.0** — see
 [LICENSE](LICENSE). The bundled cores ([Xray-core](https://github.com/XTLS/Xray-core),
