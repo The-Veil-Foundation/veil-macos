@@ -3,7 +3,7 @@
 # the older sudoers-based install. Run as root (one admin prompt).
 set -uo pipefail
 
-LABEL="dev.local.veil.helper"
+LABEL="org.veil.app.helper"
 PLIST="/Library/LaunchDaemons/${LABEL}.plist"
 INSTALL_DIR="/Library/Application Support/Veil/helper"
 
@@ -33,7 +33,10 @@ fi
 /bin/rm -rf "${INSTALL_DIR}"
 /bin/rmdir "/Library/Application Support/Veil" 2>/dev/null || true
 
-# Legacy install.
+# Legacy installs: the helper's label before the app id became org.veil.app,
+# then the sudoers-based install.
+/bin/launchctl bootout "system/dev.local.veil.helper" 2>/dev/null || true
+/bin/rm -f /Library/LaunchDaemons/dev.local.veil.helper.plist
 /bin/rm -f /etc/sudoers.d/xrayclient
 /bin/rm -rf /usr/local/libexec/xrayclient
 /bin/rm -f /tmp/xrayclient-tun2socks.pid /tmp/xrayclient-tun.state \

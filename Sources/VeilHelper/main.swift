@@ -9,7 +9,7 @@ import os
 /// tunnel is running, because it owns the state needed to put the machine's
 /// routes and DNS back.
 
-private let bootLog = Logger(subsystem: "dev.local.veil.helper", category: "boot")
+private let bootLog = Logger(subsystem: "org.veil.app.helper", category: "boot")
 
 /// Reads the code-signing requirement the connecting app has to satisfy.
 ///
@@ -51,7 +51,7 @@ private final class ListenerDelegate: NSObject, NSXPCListenerDelegate, @unchecke
 
     private let service = HelperService()
     private let requirement: String?
-    private let log = Logger(subsystem: "dev.local.veil.helper", category: "xpc")
+    private let log = Logger(subsystem: "org.veil.app.helper", category: "xpc")
 
     init(requirement: String?) {
         self.requirement = requirement
