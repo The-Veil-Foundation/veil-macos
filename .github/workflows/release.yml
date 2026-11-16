@@ -106,7 +106,7 @@ jobs:
           fi
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
@@ -143,7 +143,7 @@ jobs:
         run: Scripts/package-app.sh "${{ needs.release.outputs.version }}" x86_64
 
       - name: Publish Intel build
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release.outputs.tag }}
           draft: ${{ inputs.draft }}
