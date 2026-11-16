@@ -402,6 +402,34 @@ final class SingBoxProfileTests: XCTestCase {
         }
     }
 
+    func testTunSystemDNSNeverDialsTheTunDNSAddress() throws {
+        var input = ProfileAssembler.Input()
+        input.includeTun = true
+        input.physicalResolvers = ["172.19.0.2", "fdfe:dcba:9876::2", "192.168.31.1"]
+        let profile = ProfileAssembler.profile(input)
+        let dns = try XCTUnwrap(SingBoxProfileBuilder.build(profile)["dns"] as? [String: Any])
+        let servers = try XCTUnwrap(dns["servers"] as? [[String: Any]])
+        let local = try XCTUnwrap(servers.first { $0["tag"] as? String == DNSSettings.Builtin.local })
+        XCTAssertEqual(local["type"] as? String, "udp")
+        XCTAssertEqual(local["server"] as? String, "192.168.31.1")
+        XCTAssertEqual(dns["final"] as? String, DNSSettings.Builtin.remote)
+        let rules = try XCTUnwrap(dns["rules"] as? [[String: Any]])
+        XCTAssertEqual(rules.first?["server"] as? String, "veil-mdns")
+        XCTAssertEqual(rules.last?["server"] as? String, DNSSettings.Builtin.local)
+
+        input.physicalResolvers = ["172.19.0.2", "fdfe:dcba:9876::2"]
+        let fallback = ProfileAssembler.profile(input)
+        let fallbackDNS = try XCTUnwrap(SingBoxProfileBuilder.build(fallback)["dns"] as? [String: Any])
+        let fallbackServers = try XCTUnwrap(fallbackDNS["servers"] as? [[String: Any]])
+        XCTAssertEqual(fallbackServers.first { $0["tag"] as? String == DNSSettings.Builtin.local }?["type"] as? String,
+                       "hosts")
+
+        if let binary = Self.singBoxBinary {
+            try assertCoreAccepts(profile, binary: binary)
+            try assertCoreAccepts(fallback, binary: binary)
+        }
+    }
+
     func testFakeIPProfilePassesSingBoxCheck() throws {
         guard let binary = Self.singBoxBinary else {
             throw XCTSkip("sing-box binary not present — run Scripts/fetch-singbox.sh")
