@@ -33,7 +33,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pin Xcode 26.5 (Swift 6.3.2). The 26.6 default (Swift 6.3.3) has a
       # compiler regression that makes the release build of this module take
@@ -126,7 +126,7 @@ jobs:
     needs: release
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode 26.5 (Swift 6.3.2)
         run: sudo xcode-select -s /Applications/Xcode_26.5.app

@@ -16,7 +16,7 @@ jobs:
     name: Build & Test (${{ inputs.configuration }})
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A release build of this module takes ~25 minutes on the runner's
       # default Swift 6.3.3; Xcode 26.5 (Swift 6.3.2) is what release.yml uses.
