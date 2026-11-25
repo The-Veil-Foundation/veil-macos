@@ -11,6 +11,9 @@ on:
         options: [debug, release]
         default: debug
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     name: Build & Test (${{ inputs.configuration }})
