@@ -13,7 +13,7 @@ set -euo pipefail
 PAYLOAD_DIR="${1:-}"
 APP_BUNDLE="${2:-}"
 
-LABEL="dev.local.veil.helper"
+LABEL="org.veil.app.helper"
 INSTALL_DIR="/Library/Application Support/Veil/helper"
 PLIST="/Library/LaunchDaemons/${LABEL}.plist"
 REQUIREMENT_FILE="${INSTALL_DIR}/client.requirement"
@@ -112,7 +112,14 @@ PLISTEOF
 /bin/launchctl bootstrap system "${PLIST}"
 log "loaded ${LABEL}"
 
-# --- 4. Remove the old sudoers-based install ------------------------------
+# --- 4. Remove older installs ---------------------------------------------
+# Before the app id became org.veil.app the helper ran under this label.
+LEGACY_LABEL="dev.local.veil.helper"
+/bin/launchctl bootout "system/${LEGACY_LABEL}" 2>/dev/null || true
+if [ -f "/Library/LaunchDaemons/${LEGACY_LABEL}.plist" ]; then
+  /bin/rm -f "/Library/LaunchDaemons/${LEGACY_LABEL}.plist"
+  log "removed the legacy ${LEGACY_LABEL} daemon"
+fi
 if [ -f /etc/sudoers.d/xrayclient ]; then
   /bin/rm -f /etc/sudoers.d/xrayclient
   log "removed the legacy NOPASSWD sudoers rule"

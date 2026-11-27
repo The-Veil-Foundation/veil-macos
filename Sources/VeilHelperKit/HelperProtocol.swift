@@ -4,7 +4,7 @@ import Foundation
 public enum VeilHelperInfo {
 
     /// Mach service the daemon advertises and the app connects to.
-    public static let machServiceName = "dev.local.veil.helper"
+    public static let machServiceName = "org.veil.app.helper"
 
     /// Bumped whenever the protocol changes. The app refuses to talk to a
     /// helper that does not match and asks the user to reinstall it.

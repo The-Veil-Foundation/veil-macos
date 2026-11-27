@@ -154,7 +154,7 @@ final class UpdateInstallerTests: XCTestCase {
         try FileManager.default.createDirectory(at: contents,
                                                 withIntermediateDirectories: true)
         let plist: [String: Any] = [
-            "CFBundleIdentifier": "dev.local.veil",
+            "CFBundleIdentifier": "org.veil.app",
             "CFBundleShortVersionString": version,
             "CFBundleVersion": version
         ]
