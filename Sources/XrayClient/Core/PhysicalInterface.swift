@@ -70,6 +70,24 @@ enum PhysicalInterface {
         return servers
     }
 
+    /// Read the physical service's DNS, since Global/DNS can name Veil's utun.
+    static func physicalResolvers() -> [String] {
+        guard let store = SCDynamicStoreCreate(nil, "Veil" as CFString, nil, nil) else { return [] }
+        var services = Set<String>()
+        return ["IPv4", "IPv6"].flatMap { family -> [String] in
+            guard let primary = SCDynamicStoreCopyValue(store, "State:/Network/Global/\(family)" as CFString)
+                    as? [String: Any],
+                  let interface = primary["PrimaryInterface"] as? String, !isTunnel(interface),
+                  let id = primary["PrimaryService"] as? String, services.insert(id).inserted
+            else { return [] }
+            return ["Setup", "State"].flatMap { source -> [String] in
+                let key = "\(source):/Network/Service/\(id)/DNS" as CFString
+                let dns = SCDynamicStoreCopyValue(store, key) as? [String: Any]
+                return dns?["ServerAddresses"] as? [String] ?? []
+            }
+        }
+    }
+
     /// The default gateways macOS routes through, IPv4 and IPv6, as the
     /// primary service reports them. Read before the tunnel installs its own
     /// routes, which do not change these keys.
